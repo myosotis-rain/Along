@@ -76,7 +76,6 @@ ${scheduleContext}`;
       body: JSON.stringify({
         model: "gpt-4o-mini",
         temperature: 0.6,
-        stream: true,
         messages: [
           { role: "system", content: system },
           { role: "user", content: "I have a report due and I keep avoiding it." },
@@ -92,18 +91,14 @@ ${scheduleContext}`;
       })
     });
 
-    if (!response.body) {
-      return NextResponse.json({ 
-        bubbles: ["Want a short 20m block to get moving, or break this into micro-steps together?"]
-      });
-    }
-
-    return new Response(response.body, {
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Transfer-Encoding': 'chunked',
-      },
-    });
+    const data = await response.json();
+    const reply = data?.choices?.[0]?.message?.content ??
+      "Want a short 20m block to get moving, or break this into micro-steps together?";
+    
+    // Split response into separate bubbles on newlines
+    const bubbles = reply.split('\n').filter((bubble: string) => bubble.trim().length > 0);
+    
+    return NextResponse.json({ bubbles });
   } catch (e: any) {
     console.error("OpenAI API error:", e);
     return NextResponse.json({ 
