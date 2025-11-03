@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { ScheduleItem } from "@/types/app";
 
+export const runtime = 'edge';
+
 // In-memory storage for demo (replace with real database)
 let scheduleStore: ScheduleItem[] = [];
 
