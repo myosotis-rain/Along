@@ -1,65 +1,242 @@
-import Image from "next/image";
+"use client";
+import Shell from "@/components/Shell";
+import ChatThread from "@/components/ChatThread";
+import Composer from "@/components/Composer";
+import { useApp } from "@/lib/store";
 
-export default function Home() {
+export default function Page() {
+  const { messages, pushUser, pushAssistant, updateMessage, addTask, useGPT, schedule, tasks } = useApp();
+
+  // Detect if user message seems like a task
+  function detectTask(text: string): boolean {
+    const taskKeywords = [
+      'need to', 'have to', 'should', 'want to', 'planning to',
+      'working on', 'trying to', 'assignment', 'project', 'task',
+      'homework', 'paper', 'report', 'presentation', 'meeting',
+      'exercise', 'clean', 'organize', 'finish', 'complete',
+      'study', 'learn', 'practice', 'prepare', 'write'
+    ];
+    return taskKeywords.some(keyword => text.toLowerCase().includes(keyword));
+  }
+
+  async function handleSend(text: string) {
+    if (!text.trim()) return;
+    
+    // Optimistic update
+    pushUser(text.trim());
+    
+    const isTask = detectTask(text);
+    
+    // Fetch complete schedule context including Google Calendar events
+    let scheduleContext;
+    try {
+      const scheduleRes = await fetch("/api/schedule/current");
+      if (scheduleRes.ok) {
+        scheduleContext = await scheduleRes.json();
+      }
+    } catch (error) {
+      console.log('Failed to fetch schedule, using local data');
+    }
+    
+    // Fallback to local schedule if API fails
+    if (!scheduleContext) {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+      const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+      
+      const todaySchedule = schedule.filter(item => {
+        const itemDate = new Date(item.start);
+        return itemDate >= today && itemDate < tomorrow;
+      });
+      
+      const upcomingWeek = schedule.filter(item => {
+        const itemDate = new Date(item.start);
+        return itemDate >= tomorrow && itemDate < nextWeek;
+      }).map(item => ({
+        title: item.title,
+        start: item.start,
+        end: item.end,
+        type: item.type,
+        day: new Date(item.start).toLocaleDateString('en', { weekday: 'short' })
+      }));
+      
+      scheduleContext = {
+        todaySchedule: todaySchedule.map(item => ({
+          title: item.title,
+          start: item.start,
+          end: item.end,
+          type: item.type
+        })),
+        upcomingWeek,
+        freeTimeSlots: [],
+        currentTime: now.toISOString(),
+        nextCommitment: todaySchedule.length > 0 ? todaySchedule[0] : null
+      };
+    }
+    
+    const upcomingTasks = tasks.filter(task => !task.completed).slice(0, 5);
+    
+    const contextInfo = {
+      ...scheduleContext,
+      upcomingTasks: upcomingTasks.map(task => ({
+        title: task.title,
+        estimateMin: task.estimateMin,
+        category: task.category
+      })),
+      hasUpcomingDeadlines: upcomingTasks.length > 3
+    };
+    
+    if (useGPT) {
+      try {
+        const res = await fetch("/api/chat", { 
+          method: "POST", 
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            userText: text,
+            context: contextInfo
+          })
+        });
+        const data = await res.json();
+        
+        // Add action buttons if this seems like a task
+        const actions = isTask ? [
+          { type: "generate_microsteps" as const, label: "Break into steps", data: { taskText: text } },
+          { type: "add_to_planner" as const, label: "Add to planner", data: { taskText: text } }
+        ] : undefined;
+        
+        // Handle multiple bubbles
+        if (data.bubbles && Array.isArray(data.bubbles)) {
+          data.bubbles.forEach((bubble: string, index: number) => {
+            setTimeout(() => {
+              // Only add actions to the last bubble
+              const bubbleActions = index === data.bubbles.length - 1 ? actions : undefined;
+              pushAssistant(bubble, undefined, bubbleActions);
+            }, index * 800); // Stagger bubbles by 800ms
+          });
+        } else {
+          pushAssistant(data.reply ?? "Want a 20m block or to break it into micro-steps?", undefined, actions);
+        }
+      } catch {
+        const actions = isTask ? [
+          { type: "generate_microsteps" as const, label: "Break into steps", data: { taskText: text } }
+        ] : undefined;
+        pushAssistant("connection's wonky but I'm here. what's one small thing we could try?", undefined, actions);
+      }
+    } else {
+      // Local fallback responses with schedule awareness
+      let responses: string[] = [];
+      const freeSlots = contextInfo.freeTimeSlots || [];
+      const nextCommitment = contextInfo.nextCommitment;
+      
+      if (isTask && freeSlots.length > 0) {
+        const longestSlot = freeSlots.reduce((longest, slot) => 
+          slot.duration > longest.duration ? slot : longest, freeSlots[0]);
+        
+        if (longestSlot.duration >= 25) {
+          responses = [
+            `I see you have ${longestSlot.duration}min free${nextCommitment ? ` before ${nextCommitment.title}` : ''}`,
+            "want to use 20-25min of that?"
+          ];
+        } else {
+          responses = [
+            `you have ${longestSlot.duration}min free`,
+            "maybe just start with opening the right tab?"
+          ];
+        }
+      } else if (isTask && nextCommitment) {
+        const timeUntil = Math.floor((new Date(nextCommitment.start).getTime() - new Date().getTime()) / (1000 * 60));
+        if (timeUntil > 15) {
+          responses = [
+            `${timeUntil}min until ${nextCommitment.title}`,
+            "worth a quick 10min starter?"
+          ];
+        } else {
+          responses = [
+            `${nextCommitment.title} coming up soon`,
+            "maybe just prep what you need for later?"
+          ];
+        }
+      } else {
+        const singleResponses = [
+          "want to break this down? sometimes smaller steps feel less heavy",
+          "what's one tiny thing you could try right now? like really tiny", 
+          "sounds like a lot. maybe just 10 min to start and see how it feels?",
+          "could chunk this into smaller pieces. what feels doable first?",
+          "what feels most urgent? maybe start there and see where it goes"
+        ];
+        responses = [singleResponses[Math.floor(Math.random() * singleResponses.length)]];
+      }
+      
+      const actions = isTask ? [
+        { type: "generate_microsteps" as const, label: "Break into steps", data: { taskText: text } },
+        { type: "add_to_planner" as const, label: "Add to planner", data: { taskText: text } }
+      ] : undefined;
+      
+      // Send multiple bubbles with staggered timing
+      responses.forEach((response, index) => {
+        setTimeout(() => {
+          const bubbleActions = index === responses.length - 1 ? actions : undefined;
+          pushAssistant(response, undefined, bubbleActions);
+        }, 500 + (index * 800));
+      });
+    }
+  }
+
+  async function handleAction(action: any, messageId: string) {
+    if (action.type === "generate_microsteps") {
+      // Show loading
+      updateMessage(messageId, { 
+        microsteps: ["Generating microsteps..."],
+        actions: undefined 
+      });
+      
+      try {
+        const response = await fetch("/api/microsteps", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            taskTitle: action.data.taskText,
+            category: "other",
+            estimateMin: 25
+          })
+        });
+        
+        const data = await response.json();
+        updateMessage(messageId, { 
+          microsteps: data.microsteps || ["Break task into smaller parts", "Set a timer for 15 minutes", "Start with the easiest step"],
+          actions: [
+            { type: "add_to_planner" as const, label: "Save to planner", data: { taskText: action.data.taskText, microsteps: data.microsteps } }
+          ]
+        });
+      } catch (error) {
+        updateMessage(messageId, { 
+          microsteps: ["Break task into smaller parts", "Set a timer for 15 minutes", "Start with the easiest step"],
+          actions: [
+            { type: "add_to_planner" as const, label: "Save to planner", data: { taskText: action.data.taskText } }
+          ]
+        });
+      }
+    }
+    
+    if (action.type === "add_to_planner") {
+      const task = {
+        id: crypto.randomUUID(),
+        title: action.data.taskText.slice(0, 50) + (action.data.taskText.length > 50 ? "..." : ""),
+        estimateMin: 25,
+        category: "other" as const,
+        microsteps: action.data.microsteps || []
+      };
+      
+      addTask(task);
+      pushAssistant(`✅ Added "${task.title}" to your planner! You can find it in the Plan tab.`);
+    }
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <Shell>
+      <ChatThread items={messages} onAction={handleAction} />
+      <Composer onSend={handleSend} />
+    </Shell>
   );
 }
