@@ -1,7 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  basePath: '/Along',
+  assetPrefix: '/Along/',
+  images: {
+    unoptimized: true
+  },
+  trailingSlash: true
 };
 
 export default nextConfig;

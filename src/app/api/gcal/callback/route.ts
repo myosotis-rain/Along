@@ -28,7 +28,13 @@ export async function GET(req: NextRequest) {
     const userId = state || "user-demo";
 
     // Save encrypted tokens
-    await saveTokensForUser(userId, tokens);
+    await saveTokensForUser(userId, {
+      access_token: tokens.access_token!,
+      refresh_token: tokens.refresh_token || undefined,
+      expiry_date: tokens.expiry_date || undefined,
+      token_type: tokens.token_type || undefined,
+      scope: tokens.scope || undefined
+    });
 
     return NextResponse.redirect(`${baseUrl}/schedule?connected=1`);
   } catch (error) {

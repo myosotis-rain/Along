@@ -75,7 +75,10 @@ export default function Page() {
       };
     }
     
-    const upcomingTasks = tasks.filter(task => !task.completed).slice(0, 5);
+    const upcomingTasks = tasks.filter(task => {
+      const completedSteps = task.completedSteps || [];
+      return !completedSteps.every(step => step);
+    }).slice(0, 5);
     
     const contextInfo = {
       ...scheduleContext,
@@ -130,7 +133,7 @@ export default function Page() {
       const nextCommitment = contextInfo.nextCommitment;
       
       if (isTask && freeSlots.length > 0) {
-        const longestSlot = freeSlots.reduce((longest, slot) => 
+        const longestSlot = freeSlots.reduce((longest: any, slot: any) => 
           slot.duration > longest.duration ? slot : longest, freeSlots[0]);
         
         if (longestSlot.duration >= 25) {

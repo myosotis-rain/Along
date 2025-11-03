@@ -3,12 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "description": "Along - AI-powered productivity companion",
+  "homepage": "https://myosotis-rain.github.io/Along",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "jest --passWithNoTests"
+    "test": "jest --passWithNoTests",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d out"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",
@@ -33,6 +36,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.0.1",
+    "gh-pages": "^6.3.0",
     "jest": "^29",
     "jest-environment-jsdom": "^29",
     "tailwindcss": "^4",
