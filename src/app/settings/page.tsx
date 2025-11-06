@@ -2,21 +2,23 @@
 import Shell from "@/components/Shell";
 import AppWrapper from "@/components/AppWrapper";
 import { useApp } from "@/lib/store";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import DataManager from "@/components/DataManager";
 
 export default function SettingsPage() {
   const { prefs, updatePrefs, useGPT, updateUseGPT } = useApp();
   
-  // Initialize state from localStorage to avoid setState in effect
-  const [apiKey, setApiKey] = useState(() => {
+  const [apiKey, setApiKey] = useState("");
+  const [hasLocalKey, setHasLocalKey] = useState(false);
+
+  // Initialize state from localStorage after component mounts
+  useEffect(() => {
     const stored = localStorage.getItem("openai_api_key");
-    return stored ? "sk-..." + stored.slice(-6) : "";
-  });
-  
-  const [hasLocalKey, setHasLocalKey] = useState(() => {
-    return !!localStorage.getItem("openai_api_key");
-  });
+    if (stored) {
+      setApiKey("sk-..." + stored.slice(-6));
+      setHasLocalKey(true);
+    }
+  }, []);
 
   const saveApiKey = () => {
     if (apiKey.trim()) {
