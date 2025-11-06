@@ -14,6 +14,7 @@ interface FreeTimeSlot {
 }
 
 interface ScheduleContextEvent {
+  id?: string;
   title: string;
   start: string;
   end: string;
