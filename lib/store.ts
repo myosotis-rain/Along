@@ -12,7 +12,14 @@ const initial: AppState = {
   sessions: [], 
   schedule: [],
   prefs: { checkInMin: 20, doNotNag: true, privacyLocalOnly: true },
-  useGPT: true
+  useGPT: true,
+  userProfile: {
+    id: crypto.randomUUID(),
+    name: "",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    hasConnectedGoogleCalendar: false,
+    onboardingCompleted: false
+  }
 };
 
 type Actions = AppState & {
