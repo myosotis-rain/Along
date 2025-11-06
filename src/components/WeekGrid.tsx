@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface EventItem {
@@ -17,8 +17,6 @@ interface WeekGridProps {
 }
 
 export default function WeekGrid({ events, onCreate, weekOffset = 0, onEventClick }: WeekGridProps) {
-  const [creating, setCreating] = useState<EventItem | null>(null);
-  const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
   const [hoveredCell, setHoveredCell] = useState<{ day: number; hour: number } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -43,7 +41,7 @@ export default function WeekGrid({ events, onCreate, weekOffset = 0, onEventClic
     const end = new Date(clickedDate.getTime() + 60 * 60000); // 1 hour default
 
     const newEvent: EventItem = {
-      id: `temp-${Date.now()}`,
+      id: `temp-${crypto.randomUUID()}`,
       title: "Focus Session",
       start: clickedDate,
       end,
@@ -76,6 +74,28 @@ export default function WeekGrid({ events, onCreate, weekOffset = 0, onEventClic
       return adjustedEventDay === dayIndex;
     });
   }
+
+  // Calculate current time indicator position
+  const getCurrentTimeIndicator = () => {
+    const now = new Date();
+    const currentDay = now.getDay();
+    const adjustedCurrentDay = currentDay === 0 ? 6 : currentDay - 1;
+    const currentHour = now.getHours() + now.getMinutes() / 60;
+    
+    if (currentHour >= 6 && currentHour <= 21) {
+      const top = ((currentHour - 6) / 15) * 100;
+      
+      return {
+        left: `${12.5 + (adjustedCurrentDay * 12.5)}%`,
+        right: `${87.5 - (adjustedCurrentDay * 12.5)}%`,
+        top: `${top}%`,
+        transform: 'translateY(-50%)'
+      };
+    }
+    return null;
+  };
+
+  const timeIndicatorStyle = getCurrentTimeIndicator();
 
   return (
     <div className="h-full flex flex-col bg-white/90 backdrop-blur rounded-xl border border-fuchsia-100/40 shadow-sm overflow-hidden">
@@ -183,37 +203,20 @@ export default function WeekGrid({ events, onCreate, weekOffset = 0, onEventClic
       </div>
 
       {/* Current time indicator */}
-      {(() => {
-        const now = new Date();
-        const currentDay = now.getDay();
-        const adjustedCurrentDay = currentDay === 0 ? 6 : currentDay - 1;
-        const currentHour = now.getHours() + now.getMinutes() / 60;
-        
-        if (currentHour >= 6 && currentHour <= 21) {
-          const top = ((currentHour - 6) / 15) * 100;
-          
-          return (
-            <motion.div
-              className="absolute pointer-events-none z-20"
-              style={{
-                left: `${12.5 + (adjustedCurrentDay * 12.5)}%`,
-                right: `${87.5 - (adjustedCurrentDay * 12.5)}%`,
-                top: `${top}%`,
-                transform: 'translateY(-50%)'
-              }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.5 }}
-            >
-              <div className="flex items-center">
-                <div className="w-3 h-3 bg-red-500 rounded-full border-2 border-white shadow-lg"></div>
-                <div className="flex-1 h-0.5 bg-red-500"></div>
-              </div>
-            </motion.div>
-          );
-        }
-        return null;
-      })()}
+      {timeIndicatorStyle && (
+        <motion.div
+          className="absolute pointer-events-none z-20"
+          style={timeIndicatorStyle}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-red-500 rounded-full border-2 border-white shadow-lg"></div>
+            <div className="flex-1 h-0.5 bg-red-500"></div>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }

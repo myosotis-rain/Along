@@ -45,7 +45,7 @@ function decrypt(text: string): string {
 async function ensureDataDir() {
   try {
     await writeFile(DB_PATH, '{}', { flag: 'wx' });
-  } catch (error) {
+  } catch {
     // File already exists, which is fine
   }
 }
@@ -57,7 +57,7 @@ export async function saveTokensForUser(userId: string, tokens: TokenData): Prom
   try {
     const fileContent = await readFile(DB_PATH, 'utf-8');
     data = JSON.parse(fileContent);
-  } catch (error) {
+  } catch {
     // File doesn't exist or is invalid, start fresh
   }
 
@@ -81,7 +81,7 @@ export async function loadTokensForUser(userId: string): Promise<TokenData | nul
 
     const decrypted = decrypt(data[userId].encrypted);
     return JSON.parse(decrypted);
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -94,7 +94,7 @@ export async function removeTokensForUser(userId: string): Promise<void> {
     delete data[userId];
     
     await writeFile(DB_PATH, JSON.stringify(data, null, 2));
-  } catch (error) {
+  } catch {
     // File doesn't exist, which is fine
   }
 }

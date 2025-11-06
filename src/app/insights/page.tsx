@@ -4,7 +4,7 @@ import { useApp } from "@/lib/store";
 import { formatDuration } from "@/lib/utils";
 
 export default function InsightsPage() {
-  const { sessions, tasks, schedule } = useApp();
+  const { sessions, tasks } = useApp();
 
   // Calculate total focus time
   const totalFocusMinutes = sessions.reduce((sum, session) => sum + session.actualMin, 0);

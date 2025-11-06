@@ -71,7 +71,7 @@ Return only the microsteps as a simple list, one per line. Each should be a comp
     console.error("Microsteps generation error:", error);
     
     // Enhanced fallback based on task details
-    const { taskTitle = "", category = "other" } = await req.json().catch(() => ({}));
+    const { category = "other" } = await req.json().catch(() => ({}));
     
     const categorySteps = {
       study: [

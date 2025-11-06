@@ -3,7 +3,11 @@ export type Sender = "user" | "assistant";
 export type MessageAction = {
   type: "generate_microsteps" | "add_to_planner" | "start_focus";
   label: string;
-  data?: any;
+  data?: {
+    taskText?: string;
+    microsteps?: string[];
+    [key: string]: unknown;
+  };
 };
 
 export type Message = {

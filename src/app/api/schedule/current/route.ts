@@ -1,5 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 
+interface GoogleCalendarEvent {
+  googleEventId: string;
+  title: string;
+  start: string;
+  end: string;
+}
+
+interface ProcessedEvent {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  type: "meeting";
+  day?: string;
+}
+
+interface FreeTimeSlot {
+  start: string;
+  end: string;
+  duration: number;
+}
+
 export async function GET(req: NextRequest) {
   try {
     // Get current week range
@@ -12,7 +34,7 @@ export async function GET(req: NextRequest) {
     const timeMax = nextWeek.toISOString();
     
     // Fetch Google Calendar events
-    let googleEvents = [];
+    let googleEvents: ProcessedEvent[] = [];
     try {
       const baseUrl = req.nextUrl.origin;
       const eventsResponse = await fetch(`${baseUrl}/api/gcal/events?calendarId=primary&timeMin=${timeMin}&timeMax=${timeMax}`, {
@@ -22,8 +44,8 @@ export async function GET(req: NextRequest) {
       });
       
       if (eventsResponse.ok) {
-        const eventsData = await eventsResponse.json();
-        googleEvents = eventsData.events.map((e: any) => ({
+        const eventsData: { events: GoogleCalendarEvent[] } = await eventsResponse.json();
+        googleEvents = eventsData.events.map((e: GoogleCalendarEvent): ProcessedEvent => ({
           id: e.googleEventId,
           title: e.title,
           start: e.start,
@@ -31,27 +53,27 @@ export async function GET(req: NextRequest) {
           type: "meeting" as const
         }));
       }
-    } catch (error) {
+    } catch {
       console.log('No Google Calendar access, using local events only');
     }
     
     // Filter for today and upcoming week
-    const todayEvents = googleEvents.filter((event: any) => {
+    const todayEvents = googleEvents.filter((event: ProcessedEvent) => {
       const eventDate = new Date(event.start);
       return eventDate >= today && eventDate < tomorrow;
     });
     
-    const upcomingWeekEvents = googleEvents.filter((event: any) => {
+    const upcomingWeekEvents = googleEvents.filter((event: ProcessedEvent) => {
       const eventDate = new Date(event.start);
       return eventDate >= tomorrow && eventDate < nextWeek;
-    }).map((event: any) => ({
+    }).map((event: ProcessedEvent) => ({
       ...event,
       day: new Date(event.start).toLocaleDateString('en', { weekday: 'short' })
     }));
     
     // Calculate free time slots for today
-    const getFreeTimeSlots = (todaySchedule: any[]) => {
-      const slots = [];
+    const getFreeTimeSlots = (todaySchedule: ProcessedEvent[]): FreeTimeSlot[] => {
+      const slots: FreeTimeSlot[] = [];
       const sortedToday = [...todaySchedule].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
       
       // Check for free time between now and first event

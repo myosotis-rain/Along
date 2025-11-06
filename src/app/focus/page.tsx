@@ -15,26 +15,35 @@ export default function FocusPage() {
     
     if (isRunning && (minutes > 0 || seconds > 0)) {
       interval = setInterval(() => {
-        if (seconds > 0) {
-          setSeconds(seconds - 1);
-        } else if (minutes > 0) {
-          setMinutes(minutes - 1);
-          setSeconds(59);
-        }
+        setSeconds(prevSeconds => {
+          if (prevSeconds > 0) {
+            return prevSeconds - 1;
+          } else {
+            setMinutes(prevMinutes => prevMinutes - 1);
+            return 59;
+          }
+        });
       }, 1000);
-    } else if (minutes === 0 && seconds === 0 && isRunning) {
-      // Timer finished
-      setIsRunning(false);
-      addSession({
-        id: crypto.randomUUID(),
-        plannedMin: totalMinutes,
-        actualMin: totalMinutes,
-        at: new Date().toISOString()
-      });
     }
     
     return () => clearInterval(interval);
-  }, [isRunning, minutes, seconds, totalMinutes, addSession]);
+  }, [isRunning, minutes, seconds]);
+
+  // Handle timer completion in a separate effect
+  useEffect(() => {
+    if (minutes === 0 && seconds === 0 && isRunning) {
+      // Timer finished - use setTimeout to avoid synchronous setState in effect
+      setTimeout(() => {
+        setIsRunning(false);
+        addSession({
+          id: crypto.randomUUID(),
+          plannedMin: totalMinutes,
+          actualMin: totalMinutes,
+          at: new Date().toISOString()
+        });
+      }, 0);
+    }
+  }, [minutes, seconds, isRunning, totalMinutes, addSession]);
 
   const startTimer = () => {
     setIsRunning(true);
@@ -156,7 +165,7 @@ export default function FocusPage() {
 
         {isRunning && (
           <div className="card p-4 text-sm text-gray-600">
-            <p>🧠 Focus time! I'll check in with you in a bit.</p>
+            <p>🧠 Focus time! I&apos;ll check in with you in a bit.</p>
           </div>
         )}
       </div>

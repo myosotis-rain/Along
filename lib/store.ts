@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AppState, Message, Task, FocusSession, ScheduleItem } from "@/types/app";
+import type { AppState, Task, FocusSession, ScheduleItem } from "@/types/app";
 
 const initial: AppState = {
   messages: [{
@@ -26,7 +26,7 @@ type Actions = AppState & {
   updatePrefs: (prefs: Partial<AppState['prefs']>) => void;
 };
 
-export const useApp = create<Actions>((set, get) => ({
+export const useApp = create<Actions>((set) => ({
   ...initial,
   pushUser: (text) => set(s => ({ 
     messages: [...s.messages, {

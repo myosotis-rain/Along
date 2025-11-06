@@ -2,6 +2,7 @@
 import { motion } from "framer-motion";
 import { useEffect, useRef } from "react";
 import type { Message, MessageAction } from "@/types/app";
+import ThinkingIndicator from "./ThinkingIndicator";
 
 interface ChatThreadProps {
   items: Message[];
@@ -25,7 +26,7 @@ export default function ChatThread({ items, onAction }: ChatThreadProps) {
   }, [items]);
 
   return (
-    <div className="space-y-3 pb-8">
+    <div className="space-y-3 pb-24 sm:pb-20">
       {items.map((m, i) => (
         <motion.div 
           key={m.id}
@@ -40,12 +41,16 @@ export default function ChatThread({ items, onAction }: ChatThreadProps) {
               : "bubble"
           } px-4 py-3 max-w-[85%] sm:max-w-[80%] min-h-[48px]`}>
             <div className="space-y-3">
-              <p className="leading-relaxed text-sm sm:text-[15px] break-words whitespace-pre-wrap">{m.text}</p>
+              {m.text === "THINKING_INDICATOR" ? (
+                <ThinkingIndicator />
+              ) : (
+                <p className="leading-relaxed text-sm sm:text-[15px] break-words whitespace-pre-wrap">{m.text}</p>
+              )}
               
               {/* Microsteps List */}
               {m.microsteps && m.microsteps.length > 0 && (
                 <div className="mt-3 space-y-2">
-                  <div className="text-xs font-medium opacity-80">Here's how to break it down:</div>
+                  <div className="text-xs font-medium opacity-80">Here&apos;s how to break it down:</div>
                   <div className="space-y-1">
                     {m.microsteps.map((step, idx) => (
                       <div key={idx} className="flex items-start gap-2 text-sm">

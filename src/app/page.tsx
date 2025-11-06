@@ -3,9 +3,32 @@ import Shell from "@/components/Shell";
 import ChatThread from "@/components/ChatThread";
 import Composer from "@/components/Composer";
 import { useApp } from "@/lib/store";
+import { MessageAction } from "@/types/app";
+
+interface FreeTimeSlot {
+  start: string;
+  end: string;
+  duration: number;
+}
+
+interface ScheduleContextEvent {
+  title: string;
+  start: string;
+  end: string;
+  type: string;
+  day?: string;
+}
+
+interface ScheduleContext {
+  todaySchedule: ScheduleContextEvent[];
+  upcomingWeek: ScheduleContextEvent[];
+  freeTimeSlots: FreeTimeSlot[];
+  currentTime: string;
+  nextCommitment: ScheduleContextEvent | null;
+}
 
 export default function Page() {
-  const { messages, pushUser, pushAssistant, updateMessage, addTask, useGPT, schedule, tasks } = useApp();
+  const { messages, pushUser, pushAssistant, updateMessage, removeMessage, addTask, useGPT, schedule, tasks } = useApp();
 
   // Detect if user message seems like a task
   function detectTask(text: string): boolean {
@@ -25,16 +48,20 @@ export default function Page() {
     // Optimistic update
     pushUser(text.trim());
     
+    // Show thinking indicator
+    const thinkingId = crypto.randomUUID();
+    pushAssistant("THINKING_INDICATOR", thinkingId);
+    
     const isTask = detectTask(text);
     
     // Fetch complete schedule context including Google Calendar events
-    let scheduleContext;
+    let scheduleContext: ScheduleContext | undefined;
     try {
       const scheduleRes = await fetch("/api/schedule/current");
       if (scheduleRes.ok) {
-        scheduleContext = await scheduleRes.json();
+        scheduleContext = await scheduleRes.json() as ScheduleContext;
       }
-    } catch (error) {
+    } catch {
       console.log('Failed to fetch schedule, using local data');
     }
     
@@ -102,6 +129,9 @@ export default function Page() {
         });
         const data = await res.json();
         
+        // Remove thinking indicator
+        removeMessage(thinkingId);
+        
         // Add action buttons if this seems like a task
         const actions = isTask ? [
           { type: "generate_microsteps" as const, label: "Break into steps", data: { taskText: text } },
@@ -114,17 +144,20 @@ export default function Page() {
             setTimeout(() => {
               // Only add actions to the last bubble
               const bubbleActions = index === data.bubbles.length - 1 ? actions : undefined;
-              pushAssistant(bubble, undefined, bubbleActions);
+              pushAssistant(bubble, undefined, undefined, bubbleActions);
             }, index * 800); // Stagger bubbles by 800ms
           });
         } else {
-          pushAssistant(data.reply ?? "Want a 20m block or to break it into micro-steps?", undefined, actions);
+          pushAssistant(data.reply ?? "Want a 20m block or to break it into micro-steps?", undefined, undefined, actions);
         }
       } catch {
+        // Remove thinking indicator
+        removeMessage(thinkingId);
+        
         const actions = isTask ? [
           { type: "generate_microsteps" as const, label: "Break into steps", data: { taskText: text } }
         ] : undefined;
-        pushAssistant("connection's wonky but I'm here. what's one small thing we could try?", undefined, actions);
+        pushAssistant("connection's wonky but I'm here. what's one small thing we could try?", undefined, undefined, actions);
       }
     } else {
       // Local fallback responses with schedule awareness
@@ -133,7 +166,7 @@ export default function Page() {
       const nextCommitment = contextInfo.nextCommitment;
       
       if (isTask && freeSlots.length > 0) {
-        const longestSlot = freeSlots.reduce((longest: any, slot: any) => 
+        const longestSlot = freeSlots.reduce((longest: FreeTimeSlot, slot: FreeTimeSlot) => 
           slot.duration > longest.duration ? slot : longest, freeSlots[0]);
         
         if (longestSlot.duration >= 25) {
@@ -176,17 +209,20 @@ export default function Page() {
         { type: "add_to_planner" as const, label: "Add to planner", data: { taskText: text } }
       ] : undefined;
       
+      // Remove thinking indicator
+      removeMessage(thinkingId);
+      
       // Send multiple bubbles with staggered timing
       responses.forEach((response, index) => {
         setTimeout(() => {
           const bubbleActions = index === responses.length - 1 ? actions : undefined;
-          pushAssistant(response, undefined, bubbleActions);
+          pushAssistant(response, undefined, undefined, bubbleActions);
         }, 500 + (index * 800));
       });
     }
   }
 
-  async function handleAction(action: any, messageId: string) {
+  async function handleAction(action: MessageAction, messageId: string) {
     if (action.type === "generate_microsteps") {
       // Show loading
       updateMessage(messageId, { 
@@ -199,7 +235,7 @@ export default function Page() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            taskTitle: action.data.taskText,
+            taskTitle: action.data?.taskText || "",
             category: "other",
             estimateMin: 25
           })
@@ -209,30 +245,31 @@ export default function Page() {
         updateMessage(messageId, { 
           microsteps: data.microsteps || ["Break task into smaller parts", "Set a timer for 15 minutes", "Start with the easiest step"],
           actions: [
-            { type: "add_to_planner" as const, label: "Save to planner", data: { taskText: action.data.taskText, microsteps: data.microsteps } }
+            { type: "add_to_planner" as const, label: "Save to planner", data: { taskText: action.data?.taskText || "", microsteps: data.microsteps } }
           ]
         });
-      } catch (error) {
+      } catch {
         updateMessage(messageId, { 
           microsteps: ["Break task into smaller parts", "Set a timer for 15 minutes", "Start with the easiest step"],
           actions: [
-            { type: "add_to_planner" as const, label: "Save to planner", data: { taskText: action.data.taskText } }
+            { type: "add_to_planner" as const, label: "Save to planner", data: { taskText: action.data?.taskText || "" } }
           ]
         });
       }
     }
     
     if (action.type === "add_to_planner") {
+      const taskText = action.data?.taskText || "";
       const task = {
         id: crypto.randomUUID(),
-        title: action.data.taskText.slice(0, 50) + (action.data.taskText.length > 50 ? "..." : ""),
+        title: taskText.slice(0, 50) + (taskText.length > 50 ? "..." : ""),
         estimateMin: 25,
         category: "other" as const,
-        microsteps: action.data.microsteps || []
+        microsteps: action.data?.microsteps || []
       };
       
       addTask(task);
-      pushAssistant(`✅ Added "${task.title}" to your planner! You can find it in the Plan tab.`);
+      pushAssistant(`✅ Added "${task.title}" to your planner! You can find it in the Plan tab.`, undefined, undefined, undefined);
     }
   }
 

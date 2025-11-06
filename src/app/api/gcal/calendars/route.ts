@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getOAuthClient, calendarClient } from "@/lib/google";
 import { loadTokensForUser } from "@/lib/db";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     // In production, get user ID from session
     const userId = "user-demo";

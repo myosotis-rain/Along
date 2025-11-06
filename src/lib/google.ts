@@ -16,7 +16,7 @@ export function getOAuthClient() {
   );
 }
 
-export function calendarClient(auth: any) {
+export function calendarClient(auth: InstanceType<typeof google.auth.OAuth2>) {
   return google.calendar({ version: "v3", auth });
 }
 

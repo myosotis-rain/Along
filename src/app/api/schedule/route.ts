@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
 
     scheduleStore.push(scheduleItem);
     return NextResponse.json({ success: true, item: scheduleItem });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Invalid request data" }, 
       { status: 400 }
@@ -54,7 +54,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Invalid request data" }, 
       { status: 400 }

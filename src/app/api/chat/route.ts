@@ -99,7 +99,7 @@ ${scheduleContext}`;
     const bubbles = reply.split('\n').filter((bubble: string) => bubble.trim().length > 0);
     
     return NextResponse.json({ bubbles });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("OpenAI API error:", e);
     return NextResponse.json({ 
       bubbles: ["I'll coach locally for now—tiny first step or 20m focus?"]
