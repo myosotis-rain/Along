@@ -402,7 +402,7 @@ export default function PlannerPage() {
               <div className="mb-3">
                 <div className="text-xs font-medium text-gray-700 mb-2">Microsteps:</div>
                 <div className="space-y-2">
-                  {t.microsteps.map((step, idx) => {
+                  {t.microsteps.map((step: string, idx: number) => {
                     const isCompleted = t.completedSteps?.[idx] || false;
                     return (
                       <div key={idx} className="flex items-start gap-3 cursor-pointer group" onClick={() => toggleMicrostep(t.id, idx)}>
