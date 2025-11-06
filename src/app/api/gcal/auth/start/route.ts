@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOAuthClient, CALENDAR_SCOPES } from "@/lib/google";
 
+function getUserIdFromHeaders(req: NextRequest): string {
+  return req.headers.get("x-user-id") || "user-demo";
+}
+
 export async function GET(req: NextRequest) {
   try {
     const oauth2Client = getOAuthClient();
     
     // In production, you'd sign a JWT with the user's ID
     // For now, we'll use a simple state parameter
-    const state = "user-demo"; // Replace with actual user ID from session
+    const state = getUserIdFromHeaders(req);
     
     const url = oauth2Client.generateAuthUrl({
       access_type: "offline",

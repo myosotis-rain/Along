@@ -1,11 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getOAuthClient, calendarClient } from "@/lib/google";
 import { loadTokensForUser } from "@/lib/db";
 
-export async function GET() {
+function getUserIdFromHeaders(req: NextRequest): string {
+  return req.headers.get("x-user-id") || "user-demo";
+}
+
+export async function GET(req: NextRequest) {
   try {
     // In production, get user ID from session
-    const userId = "user-demo";
+    const userId = getUserIdFromHeaders(req);
     
     const tokens = await loadTokensForUser(userId);
     if (!tokens) {

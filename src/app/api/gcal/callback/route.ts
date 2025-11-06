@@ -13,19 +13,27 @@ export async function GET(req: NextRequest) {
   const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
 
   if (error) {
-    return NextResponse.redirect(`${baseUrl}/schedule?error=access_denied`);
+    const redirectUrl = state?.includes('onboarding') 
+      ? `${baseUrl}/?onboarding=calendar&error=access_denied`
+      : `${baseUrl}/schedule?error=access_denied`;
+    return NextResponse.redirect(redirectUrl);
   }
 
   if (!code) {
-    return NextResponse.redirect(`${baseUrl}/schedule?error=no_code`);
+    const redirectUrl = state?.includes('onboarding') 
+      ? `${baseUrl}/?onboarding=calendar&error=no_code`
+      : `${baseUrl}/schedule?error=no_code`;
+    return NextResponse.redirect(redirectUrl);
   }
 
   try {
     // Get tokens from Google
     const { tokens } = await oauth2Client.getToken(code);
     
-    // In production, decode the state to get the actual user ID
-    const userId = state || "user-demo";
+    // Parse state to get user ID and check if this is onboarding flow
+    const stateData = state || "user-demo";
+    const [userId, flow] = stateData.split('|');
+    const isOnboarding = flow === 'onboarding';
 
     // Save encrypted tokens
     await saveTokensForUser(userId, {
@@ -36,9 +44,17 @@ export async function GET(req: NextRequest) {
       scope: tokens.scope || undefined
     });
 
-    return NextResponse.redirect(`${baseUrl}/schedule?connected=1`);
+    // Redirect based on flow type
+    if (isOnboarding) {
+      return NextResponse.redirect(`${baseUrl}/?onboarding=calendar&connected=1`);
+    } else {
+      return NextResponse.redirect(`${baseUrl}/schedule?connected=1`);
+    }
   } catch (error) {
     console.error("OAuth callback error:", error);
-    return NextResponse.redirect(`${baseUrl}/schedule?error=oauth_failed`);
+    const redirectUrl = state?.includes('onboarding') 
+      ? `${baseUrl}/?onboarding=calendar&error=oauth_failed`
+      : `${baseUrl}/schedule?error=oauth_failed`;
+    return NextResponse.redirect(redirectUrl);
   }
 }

@@ -3,13 +3,16 @@ import { motion } from "framer-motion";
 import { useEffect, useRef } from "react";
 import type { Message, MessageAction } from "@/types/app";
 import ThinkingIndicator from "./ThinkingIndicator";
+import CalendarActionPrompt from "./CalendarActionPrompt";
 
 interface ChatThreadProps {
   items: Message[];
   onAction?: (action: MessageAction, messageId: string) => void;
+  onCalendarAction?: (action: 'approve' | 'deny', messageId: string) => void;
+  calendarActionLoading?: string; // messageId of loading action
 }
 
-export default function ChatThread({ items, onAction }: ChatThreadProps) {
+export default function ChatThread({ items, onAction, onCalendarAction, calendarActionLoading }: ChatThreadProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -90,6 +93,18 @@ export default function ChatThread({ items, onAction }: ChatThreadProps) {
                       {action.label}
                     </button>
                   ))}
+                </div>
+              )}
+
+              {/* Calendar Permission Prompt */}
+              {m.calendarPrompt && (
+                <div className="mt-3">
+                  <CalendarActionPrompt
+                    action={m.calendarPrompt}
+                    onApprove={() => onCalendarAction?.('approve', m.id)}
+                    onDeny={() => onCalendarAction?.('deny', m.id)}
+                    loading={calendarActionLoading === m.id}
+                  />
                 </div>
               )}
             </div>

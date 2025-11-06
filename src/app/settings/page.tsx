@@ -1,5 +1,6 @@
 "use client";
 import Shell from "@/components/Shell";
+import AppWrapper from "@/components/AppWrapper";
 import { useApp } from "@/lib/store";
 import { useState } from "react";
 import DataManager from "@/components/DataManager";
@@ -32,7 +33,8 @@ export default function SettingsPage() {
   };
 
   return (
-    <Shell>
+    <AppWrapper>
+      <Shell>
       <div className="space-y-6">
         <h1 className="text-lg font-semibold">Settings</h1>
         
@@ -192,6 +194,7 @@ export default function SettingsPage() {
         {/* Data Management */}
         <DataManager />
       </div>
-    </Shell>
+      </Shell>
+    </AppWrapper>
   );
 }

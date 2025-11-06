@@ -1,5 +1,6 @@
 "use client";
 import Shell from "@/components/Shell";
+import AppWrapper from "@/components/AppWrapper";
 import { useApp } from "@/lib/store";
 import { formatDuration } from "@/lib/utils";
 
@@ -24,7 +25,8 @@ export default function InsightsPage() {
   const bestHours = "2-4pm"; // Mock data
 
   return (
-    <Shell>
+    <AppWrapper>
+      <Shell>
       <div className="space-y-4">
         <h1 className="text-lg font-semibold">Insights</h1>
         
@@ -107,6 +109,7 @@ export default function InsightsPage() {
           </div>
         )}
       </div>
-    </Shell>
+      </Shell>
+    </AppWrapper>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 import Shell from "@/components/Shell";
+import AppWrapper from "@/components/AppWrapper";
 import { useState, useEffect } from "react";
 import { useApp } from "@/lib/store";
 
@@ -70,7 +71,8 @@ export default function FocusPage() {
   const progress = ((totalMinutes * 60 - (minutes * 60 + seconds)) / (totalMinutes * 60)) * 100;
 
   return (
-    <Shell>
+    <AppWrapper>
+      <Shell>
       <div className="text-center space-y-6">
         <h1 className="text-lg font-semibold">Focus Timer</h1>
         
@@ -169,6 +171,7 @@ export default function FocusPage() {
           </div>
         )}
       </div>
-    </Shell>
+      </Shell>
+    </AppWrapper>
   );
 }

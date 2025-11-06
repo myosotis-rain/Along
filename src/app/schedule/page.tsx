@@ -2,6 +2,7 @@
 import Shell from "@/components/Shell";
 import NativeCalendarView from "@/components/NativeCalendarView";
 import NativeMobileCalendar from "@/components/NativeMobileCalendar";
+import AppWrapper from "@/components/AppWrapper";
 import { useApp } from "@/lib/store";
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -248,8 +249,9 @@ export default function SchedulePage() {
   const weekRange = getCurrentWeekRange();
 
   return (
-    <Shell>
-      {/* Simple Header */}
+    <AppWrapper>
+      <Shell>
+        {/* Simple Header */}
       <div className="mb-4">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -572,6 +574,7 @@ export default function SchedulePage() {
           </motion.div>
         )}
       </AnimatePresence>
-    </Shell>
+      </Shell>
+    </AppWrapper>
   );
 }

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { AppState, Message, MessageAction, Task, FocusSession, ScheduleItem } from "@/types/app";
+import type { AppState, Message, MessageAction, Task, FocusSession, ScheduleItem, UserProfile } from "@/types/app";
 
 const initial: AppState = {
   messages: [{
@@ -13,7 +13,14 @@ const initial: AppState = {
   sessions: [], 
   schedule: [],
   prefs: { checkInMin: 20, doNotNag: true, privacyLocalOnly: true },
-  useGPT: true
+  useGPT: true,
+  userProfile: {
+    id: crypto.randomUUID(),
+    name: "",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    hasConnectedGoogleCalendar: false,
+    onboardingCompleted: false
+  }
 };
 
 type Actions = AppState & {
@@ -28,6 +35,8 @@ type Actions = AppState & {
   addSession: (s: FocusSession) => void;
   updatePrefs: (prefs: Partial<AppState['prefs']>) => void;
   updateUseGPT: (useGPT: boolean) => void;
+  updateUserProfile: (updates: Partial<UserProfile>) => void;
+  completeOnboarding: () => void;
 };
 
 export const useApp = create<Actions>()(
@@ -69,6 +78,12 @@ export const useApp = create<Actions>()(
       addSession: (s) => set(state => ({ sessions: [...state.sessions, s] })),
       updatePrefs: (prefs) => set(s => ({ prefs: { ...s.prefs, ...prefs } })),
       updateUseGPT: (useGPT) => set({ useGPT }),
+      updateUserProfile: (updates) => set(s => ({ 
+        userProfile: { ...s.userProfile, ...updates } 
+      })),
+      completeOnboarding: () => set(s => ({ 
+        userProfile: { ...s.userProfile, onboardingCompleted: true } 
+      })),
     }),
     {
       name: 'along-app-storage',
@@ -81,7 +96,42 @@ export const useApp = create<Actions>()(
         schedule: state.schedule.filter(item => !item.id?.includes('google')), // Exclude Google events
         prefs: state.prefs,
         useGPT: state.useGPT,
+        userProfile: state.userProfile,
       }),
     }
   )
 );
+
+export function getCurrentUserId(): string {
+  return useApp.getState().userProfile.id;
+}
+
+export function createAuthHeaders(): Headers {
+  const headers = new Headers();
+  headers.set("x-user-id", getCurrentUserId());
+  return headers;
+}
+
+export function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+  const authHeaders = createAuthHeaders();
+  
+  // Merge with existing headers if any
+  if (options.headers) {
+    if (options.headers instanceof Headers) {
+      authHeaders.forEach((value, key) => {
+        (options.headers as Headers).set(key, value);
+      });
+    } else {
+      Object.entries(options.headers).forEach(([key, value]) => {
+        if (typeof value === 'string') {
+          authHeaders.set(key, value);
+        }
+      });
+    }
+  }
+  
+  return fetch(url, {
+    ...options,
+    headers: authHeaders,
+  });
+}

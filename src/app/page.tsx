@@ -2,8 +2,10 @@
 import Shell from "@/components/Shell";
 import ChatThread from "@/components/ChatThread";
 import Composer from "@/components/Composer";
+import AppWrapper from "@/components/AppWrapper";
 import { useApp } from "@/lib/store";
-import { MessageAction } from "@/types/app";
+import { MessageAction, CalendarAction } from "@/types/app";
+import { useState } from "react";
 
 interface FreeTimeSlot {
   start: string;
@@ -29,6 +31,7 @@ interface ScheduleContext {
 
 export default function Page() {
   const { messages, pushUser, pushAssistant, updateMessage, removeMessage, addTask, useGPT, schedule, tasks } = useApp();
+  const [calendarActionLoading, setCalendarActionLoading] = useState<string | undefined>();
 
   // Detect if user message seems like a task
   function detectTask(text: string): boolean {
@@ -81,6 +84,7 @@ export default function Page() {
         const itemDate = new Date(item.start);
         return itemDate >= tomorrow && itemDate < nextWeek;
       }).map(item => ({
+        id: item.id,
         title: item.title,
         start: item.start,
         end: item.end,
@@ -90,6 +94,7 @@ export default function Page() {
       
       scheduleContext = {
         todaySchedule: todaySchedule.map(item => ({
+          id: item.id,
           title: item.title,
           start: item.start,
           end: item.end,
@@ -98,7 +103,13 @@ export default function Page() {
         upcomingWeek,
         freeTimeSlots: [],
         currentTime: now.toISOString(),
-        nextCommitment: todaySchedule.length > 0 ? todaySchedule[0] : null
+        nextCommitment: todaySchedule.length > 0 ? {
+          id: todaySchedule[0].id,
+          title: todaySchedule[0].title,
+          start: todaySchedule[0].start,
+          end: todaySchedule[0].end,
+          type: todaySchedule[0].type
+        } : null
       };
     }
     
@@ -142,13 +153,27 @@ export default function Page() {
         if (data.bubbles && Array.isArray(data.bubbles)) {
           data.bubbles.forEach((bubble: string, index: number) => {
             setTimeout(() => {
-              // Only add actions to the last bubble
+              // Only add actions to the last bubble, and calendar prompt to first bubble
               const bubbleActions = index === data.bubbles.length - 1 ? actions : undefined;
-              pushAssistant(bubble, undefined, undefined, bubbleActions);
+              const calendarPrompt = index === 0 && data.calendarAction ? data.calendarAction : undefined;
+              
+              const messageId = crypto.randomUUID();
+              pushAssistant(bubble, messageId, undefined, bubbleActions);
+              
+              // Update with calendar prompt if present
+              if (calendarPrompt) {
+                updateMessage(messageId, { calendarPrompt });
+              }
             }, index * 800); // Stagger bubbles by 800ms
           });
         } else {
-          pushAssistant(data.reply ?? "Want a 20m block or to break it into micro-steps?", undefined, undefined, actions);
+          const messageId = crypto.randomUUID();
+          pushAssistant(data.reply ?? "Want a 20m block or to break it into micro-steps?", messageId, undefined, actions);
+          
+          // Update with calendar prompt if present
+          if (data.calendarAction) {
+            updateMessage(messageId, { calendarPrompt: data.calendarAction });
+          }
         }
       } catch {
         // Remove thinking indicator
@@ -273,10 +298,104 @@ export default function Page() {
     }
   }
 
+  async function handleCalendarAction(action: 'approve' | 'deny', messageId: string) {
+    const message = messages.find(m => m.id === messageId);
+    if (!message?.calendarPrompt) return;
+
+    if (action === 'deny') {
+      // Remove the calendar prompt and show denial message
+      updateMessage(messageId, { calendarPrompt: undefined });
+      pushAssistant("No problem! I won't make that calendar change.", undefined, undefined, undefined);
+      return;
+    }
+
+    // Approve - execute the calendar action
+    setCalendarActionLoading(messageId);
+    
+    try {
+      const calendarAction = message.calendarPrompt;
+      
+      if (calendarAction.type === 'create') {
+        const response = await fetch('/api/gcal/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            calendarId: 'primary',
+            title: calendarAction.event.title,
+            startISO: calendarAction.event.start,
+            endISO: calendarAction.event.end,
+            description: calendarAction.event.description,
+            location: calendarAction.event.location,
+          }),
+        });
+
+        if (response.ok) {
+          updateMessage(messageId, { calendarPrompt: undefined });
+          pushAssistant(`✅ Created "${calendarAction.event.title}" in your calendar!`, undefined, undefined, undefined);
+        } else {
+          throw new Error('Failed to create calendar event');
+        }
+      } else if (calendarAction.type === 'update' && calendarAction.eventId) {
+        const response = await fetch(`/api/gcal/events/${calendarAction.eventId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: calendarAction.event.title,
+            startISO: calendarAction.event.start,
+            endISO: calendarAction.event.end,
+            description: calendarAction.event.description,
+            location: calendarAction.event.location,
+          }),
+        });
+
+        if (response.ok) {
+          updateMessage(messageId, { calendarPrompt: undefined });
+          pushAssistant(`✅ Updated "${calendarAction.event.title}" in your calendar!`, undefined, undefined, undefined);
+        } else {
+          throw new Error('Failed to update calendar event');
+        }
+      } else if (calendarAction.type === 'delete') {
+        console.log('Delete action received:', JSON.stringify(calendarAction, null, 2));
+        
+        if (!calendarAction.eventId) {
+          throw new Error('No eventId provided for deletion');
+        }
+        
+        console.log('Attempting to delete event:', calendarAction.eventId);
+        const response = await fetch(`/api/gcal/events/${calendarAction.eventId}`, {
+          method: 'DELETE',
+        });
+
+        console.log('Delete response status:', response.status);
+        const responseText = await response.text();
+        console.log('Delete response body:', responseText);
+
+        if (response.ok) {
+          updateMessage(messageId, { calendarPrompt: undefined });
+          pushAssistant(`✅ Deleted "${calendarAction.event.title}" from your calendar!`, undefined, undefined, undefined);
+        } else {
+          throw new Error(`Failed to delete calendar event: ${response.status} - ${responseText}`);
+        }
+      }
+    } catch (error) {
+      console.error('Calendar action failed:', error);
+      pushAssistant("Sorry, I couldn't complete that calendar action. Please try again or do it manually.", undefined, undefined, undefined);
+    } finally {
+      setCalendarActionLoading(undefined);
+    }
+  }
+
   return (
-    <Shell>
-      <ChatThread items={messages} onAction={handleAction} />
-      <Composer onSend={handleSend} />
-    </Shell>
+    <AppWrapper>
+      <Shell>
+        <ChatThread 
+          items={messages} 
+          onAction={handleAction} 
+          onCalendarAction={handleCalendarAction}
+          calendarActionLoading={calendarActionLoading}
+        />
+        <Composer onSend={handleSend} />
+      </Shell>
+    </AppWrapper>
   );
 }

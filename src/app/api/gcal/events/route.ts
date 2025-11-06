@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOAuthClient, calendarClient } from "@/lib/google";
 import { loadTokensForUser } from "@/lib/db";
 
+function getUserIdFromHeaders(req: NextRequest): string {
+  return req.headers.get("x-user-id") || "user-demo";
+}
+
 export async function GET(req: NextRequest) {
   try {
-    const userId = "user-demo";
+    const userId = getUserIdFromHeaders(req);
     
     const tokens = await loadTokensForUser(userId);
     if (!tokens) {
@@ -71,7 +75,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = "user-demo";
+    const userId = getUserIdFromHeaders(req);
     
     const tokens = await loadTokensForUser(userId);
     if (!tokens) {
@@ -149,7 +153,7 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const userId = "user-demo";
+    const userId = getUserIdFromHeaders(req);
     
     const tokens = await loadTokensForUser(userId);
     if (!tokens) {
@@ -189,7 +193,7 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const userId = "user-demo";
+    const userId = getUserIdFromHeaders(req);
     
     const tokens = await loadTokensForUser(userId);
     if (!tokens) {
