@@ -61,6 +61,7 @@ function formatTimestampLabel(ts: number) {
 
 export default function ChatThread({ items, onAction, onCalendarAction, calendarActionLoading, actionLoading }: ChatThreadProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const initialRender = useRef(true);
   const timestamps = useMemo(() => {
     const baseFallback = items[0]?.ts ?? Date.UTC(2024, 0, 1);
     return items.reduce<number[]>((acc, item) => {
@@ -76,6 +77,10 @@ export default function ChatThread({ items, onAction, onCalendarAction, calendar
   };
 
   useEffect(() => {
+    if (initialRender.current) {
+      initialRender.current = false;
+      return;
+    }
     // Add a small delay to ensure content is rendered before scrolling
     const timer = setTimeout(() => {
       scrollToBottom();

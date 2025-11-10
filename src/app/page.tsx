@@ -130,6 +130,11 @@ export default function PlanPage() {
     setDueDateInput("");
   }
 
+  function handleQuickEstimateEdit() {
+    setShowMobileDetails(true);
+    startTimeEdit();
+  }
+
   const category: Task["category"] = "other";
   const [loadingSteps, setLoadingSteps] = useState<string | null>(null);
   const [stepErrors, setStepErrors] = useState<{ [key: string]: string }>({});
@@ -548,12 +553,11 @@ export default function PlanPage() {
             <div>
               <textarea 
                 className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-sm bg-white/90 focus:outline-none focus:border-fuchsia-300 focus:bg-white transition-all duration-200 resize-none min-h-[50px] placeholder:text-gray-400"
-                placeholder="Be as specific or general as you&rsquo;d like - e.g. Write 5-page paper on nonverbal communication..."
+                placeholder="Be as specific or general as you&rsquo;d like - e.g. Write 5-page paper on personality..."
                 value={title} 
                 onChange={e => setTitle(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && !e.shiftKey && addNewTask()}
                 rows={2}
-                autoFocus
               />
               {title.length > 50 && (
                 <div className="mt-1 flex items-center space-x-1 text-xs text-gray-500">
@@ -565,6 +569,29 @@ export default function PlanPage() {
               )}
             </div>
 
+            <div className="sm:hidden flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setShowMobileDetails(true)}
+                className="px-3 py-1 text-xs rounded-full border border-gray-200 text-gray-600 bg-white/80"
+              >
+                {priority ? `Priority: ${priority}` : "+ Priority"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowMobileDetails(true)}
+                className="px-3 py-1 text-xs rounded-full border border-gray-200 text-gray-600 bg-white/80"
+              >
+                {dueDate ? `Due ${new Date(dueDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })}` : "+ Due date"}
+              </button>
+              <button
+                type="button"
+                onClick={handleQuickEstimateEdit}
+                className="px-3 py-1 text-xs rounded-full border border-fuchsia-200 text-fuchsia-700 bg-fuchsia-50/60 font-medium"
+              >
+                Estimate: {formatDuration(estimateMin)}
+              </button>
+            </div>
           </div>
 
           {/* Details Section */}
@@ -663,15 +690,13 @@ export default function PlanPage() {
             <button 
               onClick={addNewTask} 
               disabled={!title.trim()}
-              className="group relative overflow-hidden bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white px-6 py-2.5 rounded-full font-medium text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
+              className="group relative overflow-hidden bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white px-6 py-2.5 rounded-full font-medium text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 w-full sm:w-auto"
             >
-              <div className="flex items-center space-x-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-                <span>Add to plan</span>
-              </div>
-              <div className="absolute inset-0 bg-white/20 transform translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12"></div>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              <span>Add to plan</span>
+              <div className="pointer-events-none absolute inset-0 bg-white/20 transform translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12"></div>
             </button>
           </div>
         </div>
