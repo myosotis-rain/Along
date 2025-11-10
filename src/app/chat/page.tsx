@@ -438,7 +438,7 @@ export default function Page() {
                   styles: "from-blue-50 to-indigo-100 text-indigo-700 border-indigo-100"
                 },
                 {
-                  title: "Edit Google Calendar",
+                  title: "Edit calendar",
                   prompt: "Show me today's Google Calendar events and help me adjust anything that conflicts.",
                   styles: "from-slate-50 to-slate-100 text-slate-700 border-slate-100"
                 }
