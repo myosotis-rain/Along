@@ -5,7 +5,6 @@ import { useApp } from "@/lib/store";
 import { Fragment, useEffect, useState, type DragEvent, type KeyboardEvent } from "react";
 import { formatDuration } from "@/lib/utils";
 import type { Task } from "@/types/app";
-import type { Task } from "@/types/app";
 
 export default function PlanPage() {
   const { tasks, addTask, updateTask, removeTask, userProfile } = useApp();
