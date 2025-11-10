@@ -52,7 +52,7 @@ export async function saveTokensForUser(response: NextResponse, userId: string, 
 
 export async function loadTokensForUser(userId: string): Promise<TokenData | null> {
   try {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const tokenCookie = cookieStore.get(getCookieName(userId));
     if (!tokenCookie?.value) return null;
     const decrypted = decrypt(tokenCookie.value);
