@@ -684,7 +684,7 @@ export default function PlanPage() {
 
           {/* Action Section */}
           <div className="flex items-center justify-between pt-2">
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-gray-500 hidden sm:block">
               Press Enter to add, or Shift+Enter for new line
             </div>
             <button 
@@ -702,28 +702,33 @@ export default function PlanPage() {
         </div>
 
         {/* Filter Controls */}
-        <div className="flex gap-2 flex-wrap">
-          {(["all", "active", "completed", "overdue"] as const).map((filterType) => (
-            <button
-              key={filterType}
-              onClick={() => setFilter(filterType)}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                filter === filterType
-                  ? 'bg-cta text-white'
-                  : 'card hover:bg-gray-50'
-              } ${filterType === 'overdue' && tasks.filter(isTaskOverdue).length > 0 ? 'relative' : ''}`}
-            >
-              {filterType === "all" && "All tasks"}
-              {filterType === "active" && "Active"}
-              {filterType === "completed" && "Completed"}
-              {filterType === "overdue" && "Overdue"}
-              {filterType === 'overdue' && tasks.filter(isTaskOverdue).length > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                  {tasks.filter(isTaskOverdue).length}
-                </span>
-              )}
-            </button>
-          ))}
+        <div className="flex gap-2 overflow-x-auto sm:overflow-visible pb-1">
+          {(["all", "active", "completed", "overdue"] as const).map((filterType) => {
+            const label =
+              filterType === "all"
+                ? "All"
+                : filterType === "active"
+                  ? "Active"
+                  : filterType === "completed"
+                    ? "Done"
+                    : "Overdue";
+            return (
+              <button
+                key={filterType}
+                onClick={() => setFilter(filterType)}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
+                  filter === filterType ? 'bg-cta text-white' : 'card hover:bg-gray-50'
+                } ${filterType === 'overdue' && tasks.filter(isTaskOverdue).length > 0 ? 'relative' : ''}`}
+              >
+                {label}
+                {filterType === 'overdue' && tasks.filter(isTaskOverdue).length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                    {tasks.filter(isTaskOverdue).length}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
