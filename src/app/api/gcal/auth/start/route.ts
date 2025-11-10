@@ -14,7 +14,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(`${baseUrl}/schedule?error=config_missing`);
     }
     
-    const oauth2Client = getOAuthClient();
+    const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+    const oauth2Client = getOAuthClient(baseUrl);
     
     // In production, you'd sign a JWT with the user's ID
     // For now, we'll use a simple state parameter

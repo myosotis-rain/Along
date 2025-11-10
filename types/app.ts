@@ -11,6 +11,7 @@ export type Task = {
   id: string; 
   title: string; 
   estimateMin: number;
+  actualMin?: number;
   category: "study"|"writing"|"chores"|"admin"|"other";
   microsteps: string[];
 };

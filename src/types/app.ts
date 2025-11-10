@@ -38,6 +38,7 @@ export type Task = {
   title: string; 
   description?: string; // Original user input description
   estimateMin: number;
+  actualMin?: number;
   category: "study"|"writing"|"chores"|"admin"|"other";
   microsteps: string[];
   completedSteps?: boolean[];

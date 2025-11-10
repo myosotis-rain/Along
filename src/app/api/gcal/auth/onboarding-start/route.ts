@@ -6,7 +6,8 @@ function getUserIdFromHeaders(req: NextRequest): string {
 }
 
 export async function GET(req: NextRequest) {
-  const oauth2Client = getOAuthClient();
+  const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+  const oauth2Client = getOAuthClient(baseUrl);
 
   oauth2Client.setCredentials({});
   

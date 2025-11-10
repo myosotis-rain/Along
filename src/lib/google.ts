@@ -1,12 +1,28 @@
 import { google } from "googleapis";
 
-export function getOAuthClient() {
+function normalizeBaseUrl(url?: string) {
+  if (!url) return undefined;
+  return url.endsWith("/") ? url.slice(0, -1) : url;
+}
+
+export function getOAuthClient(originOverride?: string) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/gcal/callback`;
 
   if (!clientId || !clientSecret) {
     throw new Error('Google OAuth credentials not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.');
+  }
+
+  let redirectUri: string | undefined;
+  const normalizedOrigin = normalizeBaseUrl(originOverride);
+
+  if (normalizedOrigin) {
+    redirectUri = `${normalizedOrigin}/api/gcal/callback`;
+  } else if (process.env.GOOGLE_REDIRECT_URI) {
+    redirectUri = process.env.GOOGLE_REDIRECT_URI;
+  } else {
+    const fallbackOrigin = normalizeBaseUrl(process.env.NEXTAUTH_URL) || "http://localhost:3000";
+    redirectUri = `${fallbackOrigin}/api/gcal/callback`;
   }
 
   return new google.auth.OAuth2(

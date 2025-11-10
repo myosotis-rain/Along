@@ -25,6 +25,10 @@ export default function PlanPage() {
     taskId: null,
     value: "",
   });
+  const [editingActualTime, setEditingActualTime] = useState<{ taskId: string | null; value: string }>({
+    taskId: null,
+    value: "",
+  });
   const [showMobileDetails, setShowMobileDetails] = useState(false);
   const [microstepUndo, setMicrostepUndo] = useState<{ taskId: string; index: number; step: string; completed: boolean } | null>(null);
 
@@ -166,6 +170,33 @@ export default function PlanPage() {
     setEditingTaskEstimate({ taskId: null, value: "" });
   }
 
+  function startEditActualTime(taskId: string, currentActual?: number) {
+    setEditingActualTime({
+      taskId,
+      value: currentActual && currentActual > 0 ? formatDuration(currentActual) : "",
+    });
+  }
+
+  function saveActualTime(taskId: string) {
+    if (editingActualTime.taskId !== taskId) return;
+    const trimmed = editingActualTime.value.trim();
+    if (!trimmed) {
+      updateTask(taskId, { actualMin: undefined });
+      setEditingActualTime({ taskId: null, value: "" });
+      return;
+    }
+    const parsed = parseTimeInput(trimmed);
+    if (parsed !== null) {
+      const clamped = Math.max(1, Math.min(720, parsed));
+      updateTask(taskId, { actualMin: clamped });
+      setEditingActualTime({ taskId: null, value: "" });
+    }
+  }
+
+  function cancelActualTimeEdit() {
+    setEditingActualTime({ taskId: null, value: "" });
+  }
+
   function handleQuickEstimateEdit() {
     setShowMobileDetails(true);
     startTimeEdit();
@@ -245,6 +276,23 @@ export default function PlanPage() {
       return changed ? next : prev;
     });
   }, [tasks]);
+
+  useEffect(() => {
+    tasks.forEach(task => {
+      if (!isTaskCompleted(task)) return;
+      if (editingActualTime.taskId === task.id) return;
+      const timer = timers[task.id];
+      if (!timer) return;
+      const elapsedMs =
+        timer.elapsedMs +
+        (timer.isRunning && timer.startedAt ? Date.now() - timer.startedAt : 0);
+      if (elapsedMs <= 0) return;
+      const minutes = Math.max(1, Math.round(elapsedMs / 60000));
+      if (!task.actualMin || Math.abs(task.actualMin - minutes) >= 1) {
+        updateTask(task.id, { actualMin: minutes });
+      }
+    });
+  }, [tasks, timers, editingActualTime.taskId, updateTask]);
 
   useEffect(() => {
     if (!microstepUndo) return;
@@ -360,6 +408,7 @@ export default function PlanPage() {
       title: taskTitle, 
       description: t, // Save original description
       estimateMin, 
+      actualMin: undefined,
       category, 
       microsteps: [],
       priority: priority || undefined,
@@ -1148,41 +1197,95 @@ export default function PlanPage() {
                     </button>
                   )}
                 </div>
-                <button
-                  onClick={() => toggleTimer(t.id)}
-                  disabled={completed}
-                  className={`px-2.5 py-1 rounded-full border text-xs font-semibold flex items-center gap-1 transition-colors ${
-                    completed
-                      ? "border-emerald-100 bg-emerald-50 text-emerald-600"
-                      : timerRunning
-                        ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700"
-                        : "border-gray-200 text-gray-600 hover:border-fuchsia-200"
-                  } ${completed ? "cursor-default" : ""}`}
-                >
-                  {completed ? (
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M16.707 5.293a1 1 0 010 1.414l-7.5 7.5a1 1 0 01-1.414 0l-3-3a1 1 0 011.414-1.414L8.5 12.086l6.793-6.793a1 1 0 011.414 0z" />
-                    </svg>
-                  ) : timerRunning ? (
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M6 4h2v12H6V4zm6 0h2v12h-2V4z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M6 4l10 6-10 6V4z" />
-                    </svg>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => toggleTimer(t.id)}
+                    disabled={completed}
+                    className={`px-2.5 py-1 rounded-full border text-xs font-semibold flex items-center gap-1 transition-colors ${
+                      completed
+                        ? "border-emerald-100 bg-emerald-50 text-emerald-600"
+                        : timerRunning
+                          ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700"
+                          : "border-gray-200 text-gray-600 hover:border-fuchsia-200"
+                    } ${completed ? "cursor-default" : ""}`}
+                  >
+                    {completed ? (
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M16.707 5.293a1 1 0 010 1.414l-7.5 7.5a1 1 0 01-1.414 0l-3-3a1 1 0 011.414-1.414L8.5 12.086l6.793-6.793a1 1 0 011.414 0z" />
+                      </svg>
+                    ) : timerRunning ? (
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M6 4h2v12H6V4zm6 0h2v12h-2V4z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M6 4l10 6-10 6V4z" />
+                      </svg>
+                    )}
+                    <span>
+                      {completed
+                        ? "Finished"
+                        : timerRunning
+                          ? "Pause"
+                          : timerMs > 0
+                            ? "Resume"
+                            : "Start"}
+                    </span>
+                    <span className="font-semibold">{formatElapsed(timerMs)}</span>
+                  </button>
+
+                  {(completed || t.actualMin) && (
+                    editingActualTime.taskId === t.id ? (
+                      <div className="flex items-center gap-1 text-xs">
+                        <input
+                          type="text"
+                          value={editingActualTime.value}
+                          onChange={(e) => setEditingActualTime(prev => ({ ...prev, value: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveActualTime(t.id);
+                            if (e.key === "Escape") cancelActualTimeEdit();
+                          }}
+                          onBlur={() => saveActualTime(t.id)}
+                          className="w-28 border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          placeholder="e.g. 25m"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => saveActualTime(t.id)}
+                          className="p-1 text-green-600 hover:bg-green-50 rounded"
+                          title="Save actual time"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={cancelActualTimeEdit}
+                          className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded"
+                          title="Cancel"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          startEditActualTime(
+                            t.id,
+                            t.actualMin ?? (timerMs > 0 ? Math.max(1, Math.round(timerMs / 60000)) : undefined)
+                          )
+                        }
+                        className="text-xs font-medium px-2 py-1 rounded-full border border-gray-200 text-gray-600 hover:border-fuchsia-200 hover:text-fuchsia-600 transition-colors"
+                        title="Edit actual time used"
+                      >
+                        {t.actualMin ? `Actual: ${formatDuration(t.actualMin)}` : "Add actual time"}
+                      </button>
+                    )
                   )}
-                  <span>
-                    {completed
-                      ? "Finished"
-                      : timerRunning
-                        ? "Pause"
-                        : timerMs > 0
-                          ? "Resume"
-                          : "Start"}
-                  </span>
-                  <span className="font-semibold">{formatElapsed(timerMs)}</span>
-                </button>
+                </div>
                 {t.microsteps.length > 0 && (
                   <button
                     onClick={() => toggleTaskCollapse(t.id)}

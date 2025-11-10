@@ -3,14 +3,12 @@ import { getOAuthClient } from "@/lib/google";
 import { saveTokensForUser } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
-  const oauth2Client = getOAuthClient();
+  const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+  const oauth2Client = getOAuthClient(baseUrl);
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
   const state = searchParams.get("state");
   const error = searchParams.get("error");
-
-  // Get the base URL for absolute redirects
-  const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
 
   if (error) {
     const redirectUrl = state?.includes('onboarding') 
