@@ -536,9 +536,9 @@ function ChatPage() {
 type CalendarActionData = {
   type: "create" | "update" | "delete";
   event: {
-    title?: string;
-    start?: string;
-    end?: string;
+    title: string;
+    start: string;
+    end: string;
     description?: string;
     location?: string;
   };
