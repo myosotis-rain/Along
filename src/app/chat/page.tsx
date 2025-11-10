@@ -552,19 +552,28 @@ function sanitizeCalendarPrompt(action: CalendarActionData, userInput?: string, 
     event: { ...action.event }
   };
   updated.event.title = buildCalendarTitle(updated.event.title, userInput, assistantText);
-  alignEventTimesWithText(updated, assistantText, Intl.DateTimeFormat().resolvedOptions().timeZone);
+  // DISABLE TIME ALIGNMENT - AI generates correct times, don't override them
+  // alignEventTimesWithText(updated, assistantText, Intl.DateTimeFormat().resolvedOptions().timeZone);
   return updated;
 }
 
 function buildCalendarTitle(rawTitle?: string, userInput?: string, assistantText?: string) {
-  const fallback = deriveTitleFromContext(userInput) ?? deriveTitleFromContext(assistantText) ?? "Focus Block";
+  const fallback = deriveTitleFromContext(userInput) ?? deriveTitleFromContext(assistantText) ?? "Study Session";
   if (!rawTitle) return fallback;
   const cleaned = normalizeCalendarTitle(rawTitle);
   if (!cleaned) return fallback;
-  const banned = /(help me schedule|please schedule|add (this )?to (my )?calendar)/i;
+  
+  // Ban full user prompts being used as titles
+  const banned = /(help me schedule|please schedule|add (this )?to (my )?calendar|schedule.*for|schedule.*time|time for my|^schedule time)/i;
   if (banned.test(rawTitle) || banned.test(cleaned)) {
     return fallback;
   }
+  
+  // If title is too long (likely a full sentence), use fallback
+  if (cleaned.length > 20) {
+    return fallback;
+  }
+  
   return cleaned;
 }
 
@@ -586,16 +595,33 @@ function normalizeCalendarTitle(value: string) {
 
 function deriveTitleFromContext(text?: string) {
   if (!text) return null;
+  
+  // Look for quoted content
   const quoted = text.match(/"([^"]{2,80})"/);
   if (quoted) {
     return normalizeCalendarTitle(quoted[1]);
   }
+  
+  // Look for "my [subject] homework" pattern
+  const homework = text.match(/my\s+([a-z]+)\s+homework/i);
+  if (homework) {
+    return normalizeCalendarTitle(homework[1] + " Homework");
+  }
+  
+  // Look for "for my [subject]" pattern
+  const forMy = text.match(/for\s+my\s+([a-z]+(?:\s+[a-z]+)?)/i);
+  if (forMy) {
+    return normalizeCalendarTitle(forMy[1]);
+  }
+  
+  // Look for content after colon
   const afterColon = text.split(':').slice(1).join(':').trim();
   if (afterColon) {
     const sentence = afterColon.split(/[.?!\n]/)[0];
     const normalized = normalizeCalendarTitle(sentence);
     if (normalized) return normalized;
   }
+  
   const leading = text.split(/[.?!\n]/)[0];
   return normalizeCalendarTitle(leading);
 }

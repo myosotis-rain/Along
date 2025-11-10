@@ -68,59 +68,81 @@ SCHEDULE-AWARE PLANNING: When suggesting time blocks, consider:
 - NEVER suggest blocks shorter than 20 minutes for focused work
 - Look for gaps of 45+ minutes for meaningful sessions
 
+SCHEDULE CONTEXT USAGE:
+- Only reference events that are actually in the user's TODAY SCHEDULE or UPCOMING WEEK data
+- NEVER reference events from training examples or made-up events
+- It's helpful to mention real conflicts: "that works before your 2pm meeting" (if they actually have a 2pm meeting)
+- If no schedule data is available, don't mention any specific events
+
 TEMPORAL REFERENCES: When user mentions "tomorrow", "next week", specific days:
 - Reference actual events from UPCOMING WEEK data
 - Suggest specific time gaps between their scheduled events
 - Warn about busy periods or conflicts
 - Use actual meeting names from their calendar
 
-CALENDAR CONTROL: You have access to the user's calendar and can create, update, or delete events with their permission.
+CALENDAR CONTROL: You can create, update, or delete calendar events. For ANY scheduling request, you MUST generate a CALENDAR_ACTION.
 
-WHEN TO USE CALENDAR ACTIONS:
-- User has provided ALL essential details (what, when, how long)
-- User confirms they want to proceed after your questions
-- User asks to modify/update an existing event
-- User asks to cancel/delete an event
+INSTRUCTION: When the user mentions scheduling, timing, calendar, events, meetings, or tasks with time references, you MUST create a calendar action even if some details are missing. Use smart defaults and your best judgment.
 
-WHEN TO ASK FOLLOW-UP QUESTIONS INSTEAD (PREFERRED):
-- Missing ANY essential details (time, date, duration, what exactly)
-- Vague requests ("schedule work time", "add study session")
-- Need better context for smart scheduling
-- User hasn't confirmed timing preferences
-- Could suggest better timing based on their schedule
+CALENDAR ACTION RULES:
+1. **ALWAYS GENERATE** - For any scheduling request, create a CALENDAR_ACTION even with partial information
+2. **USE SMART DEFAULTS** - If no time specified, suggest a reasonable time and create the action
+3. **NO QUESTIONS WITHOUT ACTIONS** - If you ask clarifying questions, still provide a calendar action with your best guess
+4. **SMART TITLES** - Extract the core activity and create a clean, descriptive title (2-6 words)
+5. **INTELLIGENT PARSING** - Parse natural language for times, dates, and durations
+6. **USE CONTEXT** - Reference CURRENT TIME and USER TIMEZONE for accurate scheduling
 
-EVENT TITLE + TIME RULES:
-- NEVER reuse the user's raw sentence as the calendar title. Create a concise, descriptive Title Case name (≤ 6 words) such as "Advisor Check-In" or "Presentation Prep Block".
-- Always output precise ISO timestamps (YYYY-MM-DDTHH:MM:SSZ). Convert relative references (\"tomorrow morning\", \"next Tuesday 3pm\") using CURRENT TIME/context; don't leave text like \"tomorrow\" in the action.
-- If you propose or confirm a slot (e.g., \"2–2:30pm tomorrow\"), the CALENDAR_ACTION must reuse that exact window; do not change the time when writing the action.
-- If duration is given, compute end time. If only start or duration is missing, ask before creating the event.
-- Strip quotes/emojis from titles and keep descriptions short and factual.
-- Even if the user supplies a title, rewrite it into a polished Title Case summary (e.g., \"help me schedule this task\" → \"Task Planning Block\") so the calendar stays tidy.
-- Use USER TIMEZONE when turning local slots into ISO strings. Include the numeric offset (e.g., USER TIMEZONE \"America/Los_Angeles\" + \"2:00–2:30pm tomorrow\" on Nov 8 → start 2025-11-08T14:00:00-07:00, end 2025-11-08T14:30:00-07:00).
+TITLE CREATION STRATEGY:
+- ALWAYS extract the main activity/subject from the user's actual request
+- Remove scheduling words ("schedule", "plan", "add to calendar", "time to work on", etc.)
+- Create Title Case format (e.g., "Math Homework", "Team Meeting", "CS 366 Project")
+- Use the user's specific terminology (e.g., if they say "CS 366 project", use "CS 366 Project")
+- For generic requests like "study session", make it "Study Session"
+- NEVER use training examples or generic placeholders - use what the user actually said
+- If unclear, use context clues or ask but still generate action with best guess
 
-ALWAYS ASK BEFORE CREATING:
-- "What time works best?"
-- "How long should this be?"
-- "What should I call this event?"
-- "I see you have [conflict] - should we find a different time?"
-- "Want me to block [suggested better time] instead?"
+TIME PARSING STRATEGY:
+- Parse natural language: "tomorrow at 2pm", "next Tuesday", "in 30 minutes"
+- Use CURRENT TIME: ${context?.currentTime || new Date().toISOString()} 
+- Use TIMEZONE: ${context?.timezone || "UTC"}
+- Default duration: 1 hour if not specified
+- For vague times, suggest reasonable defaults based on activity type
 
-FOR EVENT DELETION:
-- You can identify events from TODAY'S SCHEDULE and UPCOMING WEEK data
-- Each event has an 'id' field you must use as eventId for deletion
-- When user asks to delete/cancel an event, IMMEDIATELY generate the CALENDAR_ACTION with the event details
-- Do NOT ask "should I delete it?" - generate the action so they can approve/deny via buttons
-- Find the matching event from the schedule data and use its exact id, title, start, and end
+DATE CALCULATION EXAMPLES:
+Current time: ${context?.currentTime || new Date().toISOString()}
+User timezone: ${context?.timezone || "America/New_York"}
+- "tomorrow at 2pm" → Convert 2pm in user's timezone to UTC (e.g., 2pm EST = 19:00 UTC)
+- "next Monday" → Calculate next Monday in user's timezone, convert to UTC
+- "in 2 hours" → Add 2 hours to current time in UTC
 
-CALENDAR ACTION FORMAT (only use when you have sufficient details):
-CALENDAR_ACTION:{"type":"create|update|delete","event":{"title":"Smart Event Title","start":"ISO_DATE","end":"ISO_DATE","description":"Optional","location":"Optional"},"eventId":"required-for-update-delete"}
+IMPORTANT: ALL calendar event times must be in UTC format, but when you mention times to the user, use their local timezone (${context?.timezone || "EST"}).
 
-SMART TITLE GENERATION:
-- Be specific and actionable (not "Work" but "Finish project proposal")
-- Include context when helpful ("Call dentist for appointment", "Review slides for tomorrow's presentation")
-- Keep it scannable (2-5 words typically)
-- Use action verbs: "Draft", "Review", "Research", "Complete", "Prepare", "Practice"
-- Examples: "Draft budget proposal", "Review client feedback", "Research competitors", "Practice presentation", "Complete math homework", "Prepare meeting agenda"
+CALENDAR_ACTION FORMAT - ALWAYS USE THIS:
+CALENDAR_ACTION:{"type":"create","event":{"title":"Activity Title","start":"YYYY-MM-DDTHH:MM:SS.sssZ","end":"YYYY-MM-DDTHH:MM:SS.sssZ","description":"Brief description if helpful"},"reasoning":"Why you chose this title and time"}
+
+EXAMPLES:
+User: "I need to study for my math exam tomorrow at 3pm"
+→ CALENDAR_ACTION:{"type":"create","event":{"title":"Math Exam Study","start":"2025-11-11T15:00:00.000Z","end":"2025-11-11T17:00:00.000Z","description":"Study session for math exam"},"reasoning":"Extracted 'Math Exam Study' from user request, scheduled for tomorrow 3pm with 2-hour default study duration"}
+
+User: "Can you add my dentist appointment on Friday at 10:30am?"
+→ CALENDAR_ACTION:{"type":"create","event":{"title":"Dentist Appointment","start":"2025-11-14T10:30:00.000Z","end":"2025-11-14T11:30:00.000Z"},"reasoning":"Clear activity and time specified"}
+
+User: "I want to schedule time to work on my presentation"
+→ Response: "I see you're free tomorrow 2-4pm. how about 'Presentation Work' from 2-4pm?
+CALENDAR_ACTION:{"type":"create","event":{"title":"Presentation Work","start":"2025-11-11T19:00:00.000Z","end":"2025-11-11T21:00:00.000Z","description":"Work session for presentation"},"reasoning":"Suggested reasonable time slot with calendar action for approval"}"
+
+User: "schedule time for my physics homework"
+→ Response: "I see you have class at 11am tomorrow. how about 'Physics Homework' from 9-10:30am before class?
+CALENDAR_ACTION:{"type":"create","event":{"title":"Physics Homework","start":"2025-11-11T14:00:00.000Z","end":"2025-11-11T15:30:00.000Z","description":"Work on physics homework"},"reasoning":"Suggested time before class with calendar action"}"
+
+IMPORTANT: Generate calendar actions for ANY scheduling-related request, even if you need to make reasonable assumptions about missing details.
+
+HANDLING TIME/DATE CHANGES: When users request different times, dates, or durations:
+- Always acknowledge their request positively ("absolutely!", "sure thing!", "that works!")
+- Generate a NEW calendar action with the updated time/date/duration
+- Keep the same event title and description unless they specify otherwise
+- Recalculate start and end times based on their new requirements
+- Always provide the updated calendar action for approval
 
 FOLLOW-UP EXAMPLES:
 - "what time would work for that meeting?"
@@ -157,7 +179,7 @@ ${scheduleContext}`;
         temperature: 0.6,
         messages: [
           { role: "system", content: system },
-          { role: "user", content: "I have a report due and I keep avoiding it." },
+          { role: "user", content: "I have this big project and I keep putting it off." },
           { role: "assistant", content: "totally fair—it's a lot to hold.\nwant to just open the file and read the first line? stop there if you want.\nif it helps, we can try a 10-minute starter block (≈ one song)." },
           { role: "user", content: "My evening is packed—should I start or leave it?" },
           { role: "assistant", content: "two paths:\n20m now buys an easier morning; waiting keeps tonight open but tightens tomorrow.\nwhich feels better for your energy?" },
@@ -171,16 +193,6 @@ ${scheduleContext}`;
           { role: "assistant", content: "what subject are you studying?\nI see you're free from 2-4pm today or 9-11am tomorrow - which works better?\nand how long feels right - 90min or 2 hours?" },
           { role: "user", content: "I need to work on homework" },
           { role: "assistant", content: "which class is this for?\nwhen's it due - so I can suggest good timing?\nhow long do you think you'll need?" },
-          { role: "user", content: "Schedule work time" },
-          { role: "assistant", content: "what project are you working on?\nI see gaps at 10am-12pm and 3-5pm today - which feels better?\nhow focused do you need to be - 90min deep work or shorter chunks?" },
-          { role: "user", content: "Cancel my 3pm meeting tomorrow" },
-          { role: "assistant", content: "CALENDAR_ACTION:{\"type\":\"delete\",\"event\":{\"title\":\"Team Sync\",\"start\":\"2025-11-07T15:00:00Z\",\"end\":\"2025-11-07T16:00:00Z\"},\"eventId\":\"google-123\"}\n\nfound that Team Sync meeting - does that look right?" },
-          { role: "user", content: "Schedule workout tomorrow at 7am for 45 minutes" },
-          { role: "assistant", content: "CALENDAR_ACTION:{\"type\":\"create\",\"event\":{\"title\":\"Morning workout\",\"start\":\"2025-11-07T07:00:00Z\",\"end\":\"2025-11-07T07:45:00Z\",\"description\":\"45-minute workout session\"}}\n\nperfect - blocked your 7am workout slot!" },
-          { role: "user", content: "Help me schedule this task into my calendar: \"test\". It should take 30 minutes tomorrow afternoon." },
-          { role: "assistant", content: "CALENDAR_ACTION:{\"type\":\"create\",\"event\":{\"title\":\"Test Prep Block\",\"start\":\"2025-11-08T14:00:00Z\",\"end\":\"2025-11-08T14:30:00Z\",\"description\":\"30-minute focused work session\"}}\n\nbooked a 2:00–2:30pm Test Prep Block tomorrow so you can focus just on that task." },
-          { role: "user", content: "Timer ended—I didn't finish." },
-          { role: "assistant", content: "no problem—plans are for learning.\nwhat would you tweak next time: block length, timing, or first step?\nwant a quick note for where to pick up?" },
           { role: "user", content: userText }
         ]
       })
@@ -196,7 +208,10 @@ ${scheduleContext}`;
     
     if (reply.includes('CALENDAR_ACTION:')) {
       try {
-        // Find the start of the JSON
+        console.log('=== CALENDAR ACTION PROCESSING ===');
+        console.log('Raw reply:', reply);
+        
+        // Extract calendar action JSON
         const actionStart = reply.indexOf('CALENDAR_ACTION:') + 'CALENDAR_ACTION:'.length;
         const jsonStart = actionStart;
         
@@ -238,10 +253,14 @@ ${scheduleContext}`;
         }
         
         const jsonString = reply.substring(jsonStart, jsonEnd);
-        console.log('Attempting to parse JSON:', jsonString);
+        console.log('Extracted JSON:', jsonString);
+        
         calendarAction = JSON.parse(jsonString);
-        calendarAction = enforceCalendarActionQuality(calendarAction, userText, cleanReply, context?.timezone, context?.currentTime);
         console.log('Parsed calendar action:', JSON.stringify(calendarAction, null, 2));
+        
+        // Validate and enhance the calendar action
+        calendarAction = validateAndEnhanceCalendarAction(calendarAction, userText, context);
+        console.log('Final calendar action:', JSON.stringify(calendarAction, null, 2));
         
         // Remove the entire CALENDAR_ACTION block from the reply
         const actionBlock = reply.substring(reply.indexOf('CALENDAR_ACTION:'), jsonEnd);
@@ -250,8 +269,11 @@ ${scheduleContext}`;
         // Clean up any extra whitespace or newlines
         cleanReply = cleanReply.replace(/\n\s*\n/g, '\n').trim();
         
+        console.log('=== END CALENDAR ACTION PROCESSING ===');
+        
       } catch (error) {
         console.error('Failed to parse calendar action:', error);
+        console.error('Raw text around error:', reply.substring(reply.indexOf('CALENDAR_ACTION:'), reply.indexOf('CALENDAR_ACTION:') + 200));
         // Fallback: just remove the calendar action line
         cleanReply = reply.replace(/CALENDAR_ACTION:[^\n]*/g, '').trim();
       }
@@ -282,245 +304,78 @@ type CalendarActionPayload = {
     location?: string;
   };
   eventId?: string;
+  reasoning?: string;
 };
 
-function enforceCalendarActionQuality(
+function validateAndEnhanceCalendarAction(
   action: CalendarActionPayload | null, 
   userText: string, 
-  assistantText: string, 
-  timeZone?: string,
-  currentTimeIso?: string
+  context: any
 ) {
-  if (!action?.event) return action;
-  const nextAction: CalendarActionPayload = { ...action, event: { ...action.event } };
-  const formattedExisting = formatTitle(nextAction.event.title);
-  if (formattedExisting) {
-    nextAction.event.title = formattedExisting;
-  }
-  if (needsTitleRewrite(nextAction.event.title, userText)) {
-    const derived = deriveTitleCandidate(userText) ?? deriveTitleCandidate(assistantText) ?? "Focus Block";
-    nextAction.event.title = derived;
-  }
-  alignTimesWithSuggestion(nextAction, assistantText, timeZone, currentTimeIso);
-  return nextAction;
-}
-
-function needsTitleRewrite(title: string, userText: string) {
-  const normalizedTitle = normalizeText(title);
-  if (!normalizedTitle) return true;
-  if (normalizedTitle.length > 80 || title.split(/\s+/).length > 10) return true;
-  if (/help me schedule/i.test(title)) return true;
-  const normalizedUser = normalizeText(userText);
-  if (normalizedUser && normalizedUser === normalizedTitle) return true;
-  return false;
-}
-
-function deriveTitleCandidate(source: string) {
-  if (!source) return null;
-  const titleHint = source.match(/title(?:\s+hint)?\s*:\s*"([^"]{2,80})"/i);
-  if (titleHint) {
-    const hinted = formatTitle(titleHint[1]);
-    if (hinted) return hinted;
+  if (!action?.event) {
+    console.log('No calendar action to validate');
+    return action;
   }
 
-  const quotedMatches = source.matchAll(/"([^"]{2,80})"/g);
-  for (const match of quotedMatches) {
-    const cleaned = formatTitle(match[1]);
-    if (cleaned) return cleaned;
+  console.log('=== VALIDATION & ENHANCEMENT ===');
+  
+  // Create a copy to avoid mutation
+  const validated = JSON.parse(JSON.stringify(action));
+  
+  // 1. Validate title - should be clean and descriptive
+  if (!validated.event.title || validated.event.title.trim().length === 0) {
+    console.warn('Missing title, using default');
+    validated.event.title = 'Calendar Event';
   }
-
-  const segments = source.split(':').slice(1);
-  for (const segment of segments) {
-    const cleaned = formatTitle(segment);
-    if (cleaned) return cleaned;
-  }
-
-  const sentence = source.split(/[.?!\n]/)[0];
-  return formatTitle(sentence);
-}
-
-function formatTitle(raw: string) {
-  if (!raw) return null;
-  const STOP_PREFIXES = [
-    /^help me schedule( this)?( task)?/i,
-    /^please schedule/i,
-    /^schedule (this )?(task|event)/i,
-    /^add (this )?to my calendar/i,
-    /^help me add/i,
-  ];
-
-  let cleaned = raw
-    .replace(/[“”]/g, '"')
-    .replace(/^["'“”]+|["'“”]+$/g, '')
-    .trim();
-
-  STOP_PREFIXES.forEach(pattern => {
-    cleaned = cleaned.replace(pattern, '').trim();
-  });
-
-  cleaned = cleaned
-    .replace(/^[\-–—:]+/, '')
-    .replace(/[^A-Za-z0-9 '&-]/g, ' ')
+  
+  // Clean up title - remove quotes and excessive whitespace
+  validated.event.title = validated.event.title
+    .replace(/^["'\s]+|["'\s]+$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
-
-  if (!cleaned) return null;
-  const words = cleaned.split(' ').slice(0, 6);
-  return words.map(toTitleCaseWord).join(' ');
-}
-
-function toTitleCaseWord(word: string) {
-  if (!word) return '';
-  return word[0].toUpperCase() + word.slice(1).toLowerCase();
-}
-
-function normalizeText(value?: string) {
-  return value?.replace(/\s+/g, ' ').trim().toLowerCase() ?? '';
-}
-
-type SlotMention = {
-  startHour: number;
-  startMinute: number;
-  endHour: number;
-  endMinute: number;
-  dayToken?: "today" | "tomorrow";
-};
-
-function alignTimesWithSuggestion(
-  action: CalendarActionPayload, 
-  assistantText: string, 
-  timeZone = "UTC", 
-  currentTimeIso?: string
-) {
-  if (!assistantText) return;
-  const slot = extractSlotMention(assistantText);
-  if (!slot) return;
-
-  const baseIso = currentTimeIso || new Date().toISOString();
-  const startDate = buildZonedDate(slot.startHour, slot.startMinute, slot.dayToken, baseIso, timeZone);
-  const endDate = buildZonedDate(slot.endHour, slot.endMinute, slot.dayToken, baseIso, timeZone);
-
-  if (!startDate || !endDate) return;
-
-  const existingStart = Date.parse(action.event.start);
-  if (!Number.isFinite(existingStart) || Math.abs(existingStart - startDate.getTime()) > 5 * 60 * 1000) {
-    action.event.start = startDate.toISOString();
-    action.event.end = endDate.toISOString();
+    
+  // Ensure title case
+  validated.event.title = validated.event.title
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+  
+  console.log('Cleaned title:', validated.event.title);
+  
+  // 2. Validate timestamps
+  const startTime = new Date(validated.event.start);
+  const endTime = new Date(validated.event.end);
+  
+  if (isNaN(startTime.getTime())) {
+    console.warn('Invalid start time, using current time + 1 hour');
+    const now = new Date();
+    validated.event.start = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
   }
-}
-
-function extractSlotMention(text: string): SlotMention | null {
-  if (!text) return null;
-  const rangeRegex = /(\d{1,2}(?::\d{2})?)\s*(am|pm)?\s*(?:-|–|—|to)\s*(\d{1,2}(?::\d{2})?)\s*(am|pm)?\s*(?:on\s+|this\s+|)??(today|tomorrow)?/i;
-  const match = rangeRegex.exec(text);
-  if (!match) return null;
-
-  const [, startRaw, , endRaw, , dayToken] = match;
-  let startMeridiem = match[2];
-  let endMeridiem = match[4];
-  if (!startMeridiem && endMeridiem) startMeridiem = endMeridiem;
-  if (!endMeridiem && startMeridiem) endMeridiem = startMeridiem;
-  if (!startMeridiem || !endMeridiem) return null;
-
-  const start = convertTo24Hour(startRaw, startMeridiem);
-  const end = convertTo24Hour(endRaw, endMeridiem);
-  if (!start || !end) return null;
-
-  const normalizedDay = dayToken?.toLowerCase() === "tomorrow" ? "tomorrow" : dayToken?.toLowerCase() === "today" ? "today" : undefined;
-
-  return {
-    startHour: start.hour,
-    startMinute: start.minute,
-    endHour: end.hour,
-    endMinute: end.minute,
-    dayToken: normalizedDay
-  };
-}
-
-function convertTo24Hour(timeStr: string, meridiem: string) {
-  if (!timeStr) return null;
-  const [hourPart, minutePart] = timeStr.split(':');
-  let hour = parseInt(hourPart, 10);
-  const minute = minutePart ? parseInt(minutePart, 10) : 0;
-  if (isNaN(hour) || isNaN(minute)) return null;
-
-  const mer = meridiem.toLowerCase();
-  hour = hour % 12;
-  if (mer === 'pm') hour += 12;
-  return { hour, minute };
-}
-
-function buildZonedDate(
-  hour: number, 
-  minute: number, 
-  dayToken: "today" | "tomorrow" | undefined, 
-  baseIso: string, 
-  timeZone: string
-) {
-  if (hour === undefined || minute === undefined) return null;
-  const baseDate = new Date(baseIso);
-  const dayOffset = dayToken === "tomorrow" ? 1 : 0;
-  const localDate = addDaysInTimeZone(baseDate, dayOffset, timeZone);
-  return zonedTimeToUtc(
-    {
-      year: localDate.year,
-      month: localDate.month,
-      day: localDate.day,
-      hour,
-      minute
-    },
-    timeZone
-  );
-}
-
-function addDaysInTimeZone(date: Date, days: number, timeZone: string) {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric'
+  
+  if (isNaN(endTime.getTime())) {
+    console.warn('Invalid end time, adding 1 hour to start');
+    const start = new Date(validated.event.start);
+    validated.event.end = new Date(start.getTime() + 60 * 60 * 1000).toISOString();
+  }
+  
+  // Ensure end is after start
+  if (new Date(validated.event.end) <= new Date(validated.event.start)) {
+    console.warn('End time before start time, fixing');
+    const start = new Date(validated.event.start);
+    validated.event.end = new Date(start.getTime() + 60 * 60 * 1000).toISOString();
+  }
+  
+  console.log('Validated times:', {
+    start: validated.event.start,
+    end: validated.event.end
   });
-  const parts = formatter.formatToParts(new Date(date.getTime() + days * 24 * 60 * 60 * 1000));
-  const map: Record<string, number> = {};
-  for (const part of parts) {
-    if (part.type === 'year' || part.type === 'month' || part.type === 'day') {
-      map[part.type] = Number(part.value);
-    }
+  
+  // 3. Add helpful description if missing and we have context
+  if (!validated.event.description && action.reasoning) {
+    validated.event.description = action.reasoning;
   }
-  return {
-    year: map.year,
-    month: map.month,
-    day: map.day
-  };
-}
-
-function zonedTimeToUtc(
-  components: { year: number; month: number; day: number; hour: number; minute: number },
-  timeZone: string
-) {
-  const date = new Date(Date.UTC(components.year, components.month - 1, components.day, components.hour, components.minute, 0));
-  const offset = getTimeZoneOffset(date, timeZone);
-  return new Date(date.getTime() - offset);
-}
-
-function getTimeZoneOffset(date: Date, timeZone: string) {
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  });
-  const parts = dtf.formatToParts(date);
-  const map: Record<string, number> = {};
-  for (const { type, value } of parts) {
-    if (type !== 'literal') {
-      map[type] = Number(value);
-    }
-  }
-  const asUTC = Date.UTC(map.year, map.month - 1, map.day, map.hour, map.minute, map.second || 0);
-  return asUTC - date.getTime();
+  
+  console.log('=== END VALIDATION ===');
+  
+  return validated;
 }

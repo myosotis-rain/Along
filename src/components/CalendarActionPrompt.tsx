@@ -35,20 +35,21 @@ export default function CalendarActionPrompt({
     return null;
   }
   
-  console.log('CalendarActionPrompt received:', action);
+  // console.log('CalendarActionPrompt received:', action);
 
   const formatTime = (dateString?: string) => {
     if (!dateString) return 'Time not specified';
     try {
       const date = new Date(dateString);
       if (isNaN(date.getTime())) return 'Invalid time';
-      return date.toLocaleString('en', {
+      return date.toLocaleString('en-US', {
         weekday: 'short',
         month: 'short',
         day: 'numeric',
         hour: 'numeric',
         minute: '2-digit',
-        hour12: true
+        hour12: true,
+        timeZone: 'America/New_York' // Use Eastern timezone to match user's schedule
       });
     } catch {
       return 'Invalid time';

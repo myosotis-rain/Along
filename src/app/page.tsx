@@ -444,15 +444,32 @@ export default function PlanPage() {
   );
 
   function handleAddToSchedule(task: Task) {
-    // Create a prompt for the chat page about scheduling this task
-    const prompt = [
-      `Help me schedule "${task.title}" as a calendar block.`,
-      task.description ? `Context: ${task.description}.` : "",
-      task.estimateMin ? `It should take about ${formatDuration(task.estimateMin)}.` : "",
-      task.dueDate ? `It's due on ${new Date(task.dueDate).toLocaleDateString()}.` : "",
-      `Please suggest a time slot, confirm it with me, and then create an event using a short Title Case name based on "${task.title}" (not this entire message).`,
-      `When you create the event, reuse the exact slot we agree on—don't change the start/end time.`
-    ].filter(Boolean).join(" ");
+    // Create a direct prompt that tells the AI to schedule a specific task
+    const parts = [
+      `Help me schedule this task into my calendar: "${task.title}".`
+    ];
+    
+    if (task.description && task.description.trim()) {
+      parts.push(`Here's more details: ${task.description}.`);
+    }
+    
+    if (task.estimateMin) {
+      parts.push(`I estimate it will take about ${formatDuration(task.estimateMin)}.`);
+    }
+    
+    if (task.dueDate) {
+      const dueDate = new Date(task.dueDate);
+      const formattedDate = dueDate.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'numeric', 
+        day: 'numeric' 
+      });
+      parts.push(`It's due on ${formattedDate}.`);
+    }
+    
+    parts.push("Please suggest when I should work on this and create a calendar event.");
+    
+    const prompt = parts.join(" ");
     
     // Navigate to chat page with the prompt
     const params = new URLSearchParams({ prompt: prompt });
