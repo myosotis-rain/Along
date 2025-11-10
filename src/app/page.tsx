@@ -9,7 +9,7 @@ import type { Task } from "@/types/app";
 export default function PlanPage() {
   const { tasks, addTask, updateTask, removeTask, userProfile } = useApp();
   const [title, setTitle] = useState("");
-  const [priority, setPriority] = useState<"high" | "medium" | "low">("medium");
+  const [priority, setPriority] = useState<"high" | "medium" | "low" | null>(null);
   const [dueDate, setDueDate] = useState("");
   const [estimateMin, setEstimateMin] = useState(30);
   const [editingTime, setEditingTime] = useState(false);
@@ -19,6 +19,7 @@ export default function PlanPage() {
   const [editingPriority, setEditingPriority] = useState<string | null>(null);
   const [editingDueDate, setEditingDueDate] = useState<string | null>(null);
   const [dueDateInput, setDueDateInput] = useState("");
+  const [showMobileDetails, setShowMobileDetails] = useState(false);
 
   // Handle clicking on time display to edit
   function startTimeEdit() {
@@ -112,10 +113,6 @@ export default function PlanPage() {
     setEditingPriority(null);
   }
 
-  function cancelEditPriority() {
-    setEditingPriority(null);
-  }
-
   // Handle due date editing
   function startEditDueDate(taskId: string, currentDueDate?: string) {
     setEditingDueDate(taskId);
@@ -146,6 +143,13 @@ export default function PlanPage() {
     index: null,
     value: "",
   });
+  
+  function setAllMicrosteps(taskId: string, completed: boolean) {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task || task.microsteps.length === 0) return;
+    const completedSteps = new Array(task.microsteps.length).fill(completed);
+    updateTask(taskId, { completedSteps });
+  }
   const VISIBLE_TASK_COUNT = 4;
   type TimerState = {
     elapsedMs: number;
@@ -293,14 +297,15 @@ export default function PlanPage() {
       estimateMin, 
       category, 
       microsteps: [],
-      priority,
+      priority: priority || undefined,
       dueDate: dueDate || undefined,
       createdAt: new Date().toISOString()
     });
     setTitle("");
     setDueDate("");
     setEstimateMin(30);
-    setPriority("medium");
+    setPriority(null);
+    setShowMobileDetails(false);
   }
 
 
@@ -486,7 +491,7 @@ export default function PlanPage() {
       <div className="mb-4 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-semibold">Hi, {userProfile.name || 'there'}!</h1>
+          <h1 className="text-lg font-semibold">Hi, {userProfile.name || "there"}!</h1>
             <p className="text-sm text-gray-600">Ready to plan your day?</p>
           </div>
           <div className="text-sm text-gray-500 text-right">
@@ -525,13 +530,25 @@ export default function PlanPage() {
         </div>
 
         <div className="bg-gradient-to-br from-white to-gray-50/30 rounded-2xl border border-gray-200/60 shadow-sm hover:shadow-md transition-all duration-200 p-4 space-y-3">
-          <h3 className="text-base font-medium text-gray-900">What's on your mind?</h3>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-base font-medium text-gray-900">What&rsquo;s on your mind?</h3>
+            <button
+              type="button"
+              onClick={() => setShowMobileDetails(prev => !prev)}
+              className="sm:hidden inline-flex items-center gap-1 text-xs font-semibold text-fuchsia-600 border border-fuchsia-100 px-3 py-1 rounded-full bg-fuchsia-50/40"
+            >
+              <svg className={`w-3.5 h-3.5 transition-transform ${showMobileDetails ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+              </svg>
+              Details
+            </button>
+          </div>
 
           <div className="space-y-3">
             <div>
               <textarea 
                 className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-sm bg-white/90 focus:outline-none focus:border-fuchsia-300 focus:bg-white transition-all duration-200 resize-none min-h-[50px] placeholder:text-gray-400"
-                placeholder="Be as specific or general as you'd like - e.g. Write 5-page paper on nonverbal communication..."
+                placeholder="Be as specific or general as you&rsquo;d like - e.g. Write 5-page paper on nonverbal communication..."
                 value={title} 
                 onChange={e => setTitle(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && !e.shiftKey && addNewTask()}
@@ -551,7 +568,7 @@ export default function PlanPage() {
           </div>
 
           {/* Details Section */}
-          <div className="border-t border-gray-100 pt-4 space-y-4">
+          <div className={`border-t border-gray-100 pt-4 space-y-4 ${showMobileDetails ? "block" : "hidden"} sm:block`}>
             <div className="grid gap-4 md:grid-cols-2">
               {/* Priority and Due Date Row */}
               <div className="space-y-3">
@@ -778,7 +795,7 @@ export default function PlanPage() {
                               onClick={() => !completed && startEditPriority(t.id)}
                               title={completed ? undefined : "Click to edit priority"}
                             >
-                              {t.priority ?? "medium"}
+                              {t.priority}
                             </span>
                         {!completed && (
                           <button
@@ -951,7 +968,20 @@ export default function PlanPage() {
             
             {t.microsteps.length > 0 && !isCollapsed && (
               <div className="mb-2.5">
-                <div className="text-xs font-medium text-gray-700 mb-1.5">Microsteps:</div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-medium text-gray-700">Microsteps:</span>
+                  <button
+                    type="button"
+                    onClick={() => setAllMicrosteps(t.id, !completed)}
+                    className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-all ${
+                      completed
+                        ? "border-fuchsia-200 text-fuchsia-700 bg-fuchsia-50 hover:bg-fuchsia-100"
+                        : "border-gray-200 text-gray-600 hover:border-fuchsia-200 hover:text-fuchsia-600"
+                    }`}
+                  >
+                    {completed ? "Reset steps" : "Complete all"}
+                  </button>
+                </div>
                 <div
                   className="space-y-1.5 overflow-y-auto max-h-64 pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400"
                   aria-label="Microsteps list"

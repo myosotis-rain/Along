@@ -8,8 +8,6 @@ function getUserIdFromHeaders(req: NextRequest): string {
 export async function GET(req: NextRequest) {
   const oauth2Client = getOAuthClient();
 
-  // Use the standard callback URL that's registered in Google OAuth
-  const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
   oauth2Client.setCredentials({});
   
   const authUrl = oauth2Client.generateAuthUrl({

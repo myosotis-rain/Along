@@ -1,11 +1,8 @@
 "use client";
-import { useState } from "react";
 import { useApp } from "@/lib/store";
-import { motion } from "framer-motion";
 
 export default function DataManager() {
   const { messages, tasks, sessions, schedule, prefs, useGPT } = useApp();
-  const [showExport, setShowExport] = useState(false);
 
   const exportData = () => {
     const data = {
@@ -91,25 +88,6 @@ export default function DataManager() {
         </div>
       </div>
 
-      {showExport && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="card p-4 border-purple-200"
-        >
-          <h4 className="font-medium text-gray-900 mb-2">Data Export Options</h4>
-          <div className="space-y-2 text-sm text-gray-600">
-            <div>• Chat history and conversations</div>
-            <div>• Tasks and microsteps</div>
-            <div>• Focus session records</div>
-            <div>• Local calendar events</div>
-            <div>• App preferences</div>
-          </div>
-          <div className="text-xs text-gray-500 mt-2 p-2 bg-gray-50 rounded">
-            <strong>Note:</strong> Google Calendar events are not exported as they remain in your Google account.
-          </div>
-        </motion.div>
-      )}
     </div>
   );
 }

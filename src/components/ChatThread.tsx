@@ -1,6 +1,6 @@
 "use client";
 import { motion } from "framer-motion";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { Message, MessageAction } from "@/types/app";
 import ThinkingIndicator from "./ThinkingIndicator";
 import CalendarActionPrompt from "./CalendarActionPrompt";
@@ -13,8 +13,63 @@ interface ChatThreadProps {
   actionLoading?: string;
 }
 
+function isSameDay(a: number, b: number) {
+  const dateA = new Date(a);
+  const dateB = new Date(b);
+  return (
+    dateA.getFullYear() === dateB.getFullYear() &&
+    dateA.getMonth() === dateB.getMonth() &&
+    dateA.getDate() === dateB.getDate()
+  );
+}
+
+function formatDayLabel(ts: number) {
+  const date = new Date(ts);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  if (isSameDay(ts, today.getTime())) return "Today";
+  if (isSameDay(ts, yesterday.getTime())) return "Yesterday";
+
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+function formatTime(ts: number) {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(ts));
+}
+
+function formatTimestampLabel(ts: number) {
+  const today = Date.now();
+  if (isSameDay(ts, today)) {
+    return `Today · ${formatTime(ts)}`;
+  }
+  const yesterday = new Date();
+  yesterday.setDate(new Date().getDate() - 1);
+  if (isSameDay(ts, yesterday.getTime())) {
+    return `Yesterday · ${formatTime(ts)}`;
+  }
+  return `${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(ts))} · ${formatTime(ts)}`;
+}
+
 export default function ChatThread({ items, onAction, onCalendarAction, calendarActionLoading, actionLoading }: ChatThreadProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const timestamps = useMemo(() => {
+    const baseFallback = items[0]?.ts ?? Date.UTC(2024, 0, 1);
+    return items.reduce<number[]>((acc, item) => {
+      const last = acc.length > 0 ? acc[acc.length - 1] : baseFallback;
+      const resolved = typeof item.ts === "number" ? item.ts : last;
+      acc.push(resolved);
+      return acc;
+    }, []);
+  }, [items]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -31,19 +86,30 @@ export default function ChatThread({ items, onAction, onCalendarAction, calendar
 
   return (
     <div className="space-y-3 pb-24 sm:pb-20">
-      {items.map((m, i) => (
-        <motion.div 
-          key={m.id}
-          initial={{ opacity: 0, y: 8, scale: 0.98 }} 
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.2, delay: i * 0.05 }}
-          className={`flex ${m.sender === "assistant" ? "justify-start" : "justify-end"}`}
-        >
-          <div className={`${
-            m.sender === "assistant" 
-              ? "bubble assistant" 
-              : "bubble"
-          } px-4 py-3 max-w-[85%] sm:max-w-[80%] min-h-[48px]`}>
+      {items.map((m, i) => {
+        const ts = timestamps[i];
+        const showDayDivider = i === 0 || !isSameDay(ts, timestamps[i - 1]);
+
+        return (
+          <div key={m.id}>
+            {(i === 0 || ts - timestamps[i - 1] > 5 * 60 * 1000) && (
+              <div className="flex justify-center my-2">
+                <div className="px-3 py-0.5 rounded-full text-[11px] font-medium text-gray-500 bg-white/80 backdrop-blur border border-gray-200">
+                  {formatTimestampLabel(ts)}
+                </div>
+              </div>
+            )}
+            <motion.div 
+              initial={{ opacity: 0, y: 8, scale: 0.98 }} 
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.2, delay: i * 0.05 }}
+              className={`flex ${m.sender === "assistant" ? "justify-start" : "justify-end"}`}
+            >
+              <div className={`${
+                m.sender === "assistant" 
+                  ? "bubble assistant" 
+                  : "bubble"
+              } px-4 py-3 max-w-[85%] sm:max-w-[80%] min-h-[48px]`}>
             <div className="space-y-3">
               {m.text === "THINKING_INDICATOR" ? (
                 <ThinkingIndicator />
@@ -113,10 +179,13 @@ export default function ChatThread({ items, onAction, onCalendarAction, calendar
                   />
                 </div>
               )}
+
             </div>
           </div>
-        </motion.div>
-      ))}
+            </motion.div>
+          </div>
+        );
+      })}
       <div ref={messagesEndRef} />
     </div>
   );

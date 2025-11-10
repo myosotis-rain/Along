@@ -4,7 +4,7 @@ import ChatThread from "@/components/ChatThread";
 import Composer from "@/components/Composer";
 import AppWrapper from "@/components/AppWrapper";
 import { useApp } from "@/lib/store";
-import { MessageAction, CalendarAction } from "@/types/app";
+import { MessageAction } from "@/types/app";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -305,6 +305,7 @@ export default function Page() {
         
         addTask(task);
       } catch (error) {
+        console.error("Failed to add to planner via AI:", error);
         // Fallback task creation if APIs fail
         const task = {
           id: crypto.randomUUID(),
@@ -409,35 +410,6 @@ export default function Page() {
     }
   }
 
-  // Simple floating bubbles for feature discovery
-  function SuggestionBubbles() {
-    const bubbles = [
-      { text: "Schedule", prompt: "What's on my schedule today?" },
-      { text: "Tasks", prompt: "Help me break down a task" },
-      { text: "Calendar", prompt: "Add a meeting to my calendar" },
-      { text: "Planning", prompt: "Help me plan my day" }
-    ];
-
-    if (messages.length > 2) return null; // Hide once conversation starts
-
-    return (
-      <div className="px-4 pb-4 max-w-xl mx-auto">
-        <div className="flex flex-wrap gap-2 justify-center">
-          {bubbles.map((bubble) => (
-            <button
-              key={bubble.text}
-              onClick={() => setComposerText(bubble.prompt)}
-              className="px-4 py-2 bg-gray-100/80 hover:bg-gray-200/80 rounded-full text-sm text-gray-700 hover:text-gray-900 transition-all duration-200 hover:shadow-sm border border-gray-200/60"
-            >
-              {bubble.text}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-
   return (
     <AppWrapper>
       <Shell>
@@ -448,11 +420,41 @@ export default function Page() {
           calendarActionLoading={calendarActionLoading}
           actionLoading={addingToPlanner}
         />
-        <SuggestionBubbles />
         <Composer 
           onSend={handleSend} 
           initialText={composerText}
           onTextChange={(text) => setComposerText(text)}
+          accessory={(
+            <>
+              {[
+                {
+                  title: "Get started",
+                  prompt: "Help me get started on this task and break it into microsteps.",
+                  styles: "from-purple-50 to-purple-100 text-purple-700 border-purple-100"
+                },
+                {
+                  title: "Figure out priority",
+                  prompt: "Help me figure out the priority of what I should tackle next.",
+                  styles: "from-blue-50 to-indigo-100 text-indigo-700 border-indigo-100"
+                },
+                {
+                  title: "Edit Google Calendar",
+                  prompt: "Show me today's Google Calendar events and help me adjust anything that conflicts.",
+                  styles: "from-slate-50 to-slate-100 text-slate-700 border-slate-100"
+                }
+              ].map((option) => (
+                <button
+                  key={option.title}
+                  type="button"
+                  onClick={() => setComposerText(option.prompt)}
+                  className={`text-[11px] font-medium px-3 py-1 rounded-full border bg-gradient-to-r shadow-[0_1px_2px_rgba(15,23,42,0.08)] whitespace-nowrap transition-colors hover:brightness-95 ${option.styles}`}
+                  title={option.prompt}
+                >
+                  {option.title}
+                </button>
+              ))}
+            </>
+          )}
         />
       </Shell>
     </AppWrapper>
