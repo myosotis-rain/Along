@@ -103,12 +103,12 @@ export default function PlanPage() {
   }
 
   // Handle priority editing
-  function startEditPriority(taskId: string, currentPriority: string) {
+  function startEditPriority(taskId: string) {
     setEditingPriority(taskId);
   }
 
-  function savePriority(taskId: string, newPriority: string) {
-    updateTask(taskId, { priority: newPriority as Task["priority"] });
+  function savePriority(taskId: string, newPriority: Task["priority"]) {
+    updateTask(taskId, { priority: newPriority });
     setEditingPriority(null);
   }
 
@@ -760,7 +760,7 @@ export default function PlanPage() {
                         {["low", "medium", "high"].map((priority) => (
                           <button
                             key={priority}
-                            onClick={() => savePriority(t.id, priority)}
+                            onClick={() => savePriority(t.id, priority as Task["priority"])}
                             className={`px-2 py-0.5 rounded-full text-xs font-medium border transition-all ${
                               t.priority === priority 
                                 ? getPriorityColor(priority as Task["priority"]) + " ring-1 ring-purple-300"
@@ -775,14 +775,14 @@ export default function PlanPage() {
                       <div className="flex items-center gap-1 group">
                             <span 
                               className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 ${getPriorityColor(t.priority)}`}
-                              onClick={() => !completed && startEditPriority(t.id, (t.priority ?? "medium"))}
+                              onClick={() => !completed && startEditPriority(t.id)}
                               title={completed ? undefined : "Click to edit priority"}
                             >
                               {t.priority ?? "medium"}
                             </span>
                         {!completed && (
                           <button
-                            onClick={() => startEditPriority(t.id, t.priority)}
+                            onClick={() => startEditPriority(t.id)}
                             className="opacity-0 group-hover:opacity-50 hover:opacity-100 p-0.5 text-gray-400 hover:text-purple-600 rounded transition-all"
                             title="Edit priority"
                           >
@@ -795,7 +795,7 @@ export default function PlanPage() {
                     ) : (
                       !completed && (
                         <button
-                          onClick={() => startEditPriority(t.id, "medium")}
+                          onClick={() => startEditPriority(t.id)}
                           className="px-2 py-0.5 rounded-full text-xs text-gray-400 hover:text-gray-600 border border-dashed border-gray-300 hover:border-gray-400 transition-all"
                           title="Add priority"
                         >
