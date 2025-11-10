@@ -773,13 +773,13 @@ export default function PlanPage() {
                       </div>
                     ) : t.priority ? (
                       <div className="flex items-center gap-1 group">
-                        <span 
-                          className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 ${getPriorityColor(t.priority)}`}
-                          onClick={() => !completed && startEditPriority(t.id, t.priority)}
-                          title={completed ? undefined : "Click to edit priority"}
-                        >
-                          {t.priority}
-                        </span>
+                            <span 
+                              className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 ${getPriorityColor(t.priority)}`}
+                              onClick={() => !completed && startEditPriority(t.id, (t.priority ?? "medium"))}
+                              title={completed ? undefined : "Click to edit priority"}
+                            >
+                              {t.priority ?? "medium"}
+                            </span>
                         {!completed && (
                           <button
                             onClick={() => startEditPriority(t.id, t.priority)}
