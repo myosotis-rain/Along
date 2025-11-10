@@ -8,8 +8,9 @@ function getUserIdFromHeaders(req: NextRequest): string {
 export async function POST(req: NextRequest) {
   try {
     const userId = getUserIdFromHeaders(req);
-    await removeTokensForUser(userId);
-    return NextResponse.json({ success: true });
+    const response = NextResponse.json({ success: true });
+    await removeTokensForUser(response, userId);
+    return response;
   } catch (error) {
     console.error("Failed to disconnect calendar:", error);
     return NextResponse.json({ error: "Failed to disconnect" }, { status: 500 });

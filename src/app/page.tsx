@@ -280,19 +280,17 @@ export default function PlanPage() {
   useEffect(() => {
     tasks.forEach(task => {
       if (!isTaskCompleted(task)) return;
-      if (editingActualTime.taskId === task.id) return;
+      if (task.actualMin !== undefined && task.actualMin !== null) return;
       const timer = timers[task.id];
-      if (!timer) return;
+      if (!timer || timer.elapsedMs <= 0) return;
       const elapsedMs =
         timer.elapsedMs +
         (timer.isRunning && timer.startedAt ? Date.now() - timer.startedAt : 0);
       if (elapsedMs <= 0) return;
       const minutes = Math.max(1, Math.round(elapsedMs / 60000));
-      if (!task.actualMin || Math.abs(task.actualMin - minutes) >= 1) {
-        updateTask(task.id, { actualMin: minutes });
-      }
+      updateTask(task.id, { actualMin: minutes });
     });
-  }, [tasks, timers, editingActualTime.taskId, updateTask]);
+  }, [tasks, timers, updateTask]);
 
   useEffect(() => {
     if (!microstepUndo) return;
@@ -1281,7 +1279,7 @@ export default function PlanPage() {
                         className="text-xs font-medium px-2 py-1 rounded-full border border-gray-200 text-gray-600 hover:border-fuchsia-200 hover:text-fuchsia-600 transition-colors"
                         title="Edit actual time used"
                       >
-                        {t.actualMin ? `Actual: ${formatDuration(t.actualMin)}` : "Add actual time"}
+                        {t.actualMin ? `Actual ${formatDuration(t.actualMin)}` : "Add actual time"}
                       </button>
                     )
                   )}
@@ -1600,8 +1598,11 @@ export default function PlanPage() {
               )}
               <button 
                 onClick={() => handleAddToSchedule(t)}
-                className="px-3 py-1 rounded-full bg-white/70 border text-sm hover:bg-gray-50"
+                className="px-3 py-1 rounded-full bg-white/70 border text-sm hover:bg-gray-50 flex items-center gap-1.5 text-gray-700"
               >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14V7H5v14z" />
+                </svg>
                 Add to schedule
               </button>
               <button 

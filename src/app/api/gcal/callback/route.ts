@@ -34,7 +34,13 @@ export async function GET(req: NextRequest) {
     const isOnboarding = flow === 'onboarding';
 
     // Save encrypted tokens
-    await saveTokensForUser(userId, {
+    const response = NextResponse.redirect(
+      isOnboarding
+        ? `${baseUrl}/?onboarding=calendar&connected=1`
+        : `${baseUrl}/schedule?connected=1`
+    );
+
+    await saveTokensForUser(response, userId, {
       access_token: tokens.access_token!,
       refresh_token: tokens.refresh_token || undefined,
       expiry_date: tokens.expiry_date || undefined,
@@ -42,12 +48,7 @@ export async function GET(req: NextRequest) {
       scope: tokens.scope || undefined
     });
 
-    // Redirect based on flow type
-    if (isOnboarding) {
-      return NextResponse.redirect(`${baseUrl}/?onboarding=calendar&connected=1`);
-    } else {
-      return NextResponse.redirect(`${baseUrl}/schedule?connected=1`);
-    }
+    return response;
   } catch (error) {
     console.error("OAuth callback error:", error);
     const redirectUrl = state?.includes('onboarding') 
