@@ -2,23 +2,27 @@
 import Shell from "@/components/Shell";
 import AppWrapper from "@/components/AppWrapper";
 import { useApp } from "@/lib/store";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import DataManager from "@/components/DataManager";
 
 export default function SettingsPage() {
-  const { prefs, updatePrefs, useGPT, updateUseGPT } = useApp();
+  const { prefs, updatePrefs, useGPT, updateUseGPT, userProfile, updateUserProfile } = useApp();
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState(userProfile.name || "");
   
-  const [apiKey, setApiKey] = useState("");
-  const [hasLocalKey, setHasLocalKey] = useState(false);
-
-  // Initialize state from localStorage after component mounts
-  useEffect(() => {
-    const stored = localStorage.getItem("openai_api_key");
-    if (stored) {
-      setApiKey("sk-..." + stored.slice(-6));
-      setHasLocalKey(true);
+  const [hasLocalKey, setHasLocalKey] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
     }
-  }, []);
+    return Boolean(localStorage.getItem("openai_api_key"));
+  });
+  const [apiKey, setApiKey] = useState(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+    const stored = localStorage.getItem("openai_api_key");
+    return stored ? "sk-..." + stored.slice(-6) : "";
+  });
 
   const saveApiKey = () => {
     if (apiKey.trim()) {
@@ -34,11 +38,78 @@ export default function SettingsPage() {
     setApiKey("");
   };
 
+  const saveName = () => {
+    if (nameInput.trim()) {
+      updateUserProfile({ name: nameInput.trim() });
+      setEditingName(false);
+    }
+  };
+
+  const cancelNameEdit = () => {
+    setNameInput(userProfile.name || "");
+    setEditingName(false);
+  };
+
   return (
     <AppWrapper>
       <Shell>
       <div className="space-y-6">
         <h1 className="text-lg font-semibold">Settings</h1>
+        
+        {/* Profile Settings */}
+        <div className="card p-4">
+          <h3 className="font-medium mb-3">Profile</h3>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-2">Your Name</label>
+              <div className="flex items-center gap-3">
+                {editingName ? (
+                  <>
+                    <input
+                      type="text"
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveName();
+                        if (e.key === 'Escape') cancelNameEdit();
+                      }}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      placeholder="Enter your name"
+                      autoFocus
+                    />
+                    <button
+                      onClick={saveName}
+                      disabled={!nameInput.trim()}
+                      className="px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={cancelNameEdit}
+                      className="px-3 py-2 bg-gray-400 text-white text-sm rounded-lg hover:bg-gray-500"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm">
+                      {userProfile.name || "No name set"}
+                    </div>
+                    <button
+                      onClick={() => setEditingName(true)}
+                      className="px-3 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700"
+                    >
+                      Edit
+                    </button>
+                  </>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">This name appears in greetings throughout the app</p>
+            </div>
+          </div>
+        </div>
         
         {/* AI Integration */}
         <div className="card p-4">

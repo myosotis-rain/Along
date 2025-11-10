@@ -36,6 +36,7 @@ export type Message = {
 export type Task = {
   id: string; 
   title: string; 
+  description?: string; // Original user input description
   estimateMin: number;
   category: "study"|"writing"|"chores"|"admin"|"other";
   microsteps: string[];

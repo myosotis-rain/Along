@@ -17,6 +17,13 @@ export const metadata: Metadata = {
   description: "Your gentle productivity companion for breaking tasks into manageable steps and maintaining focus.",
 };
 
+import { validateEnv } from '@/lib/env';
+
+// Validate environment variables at startup
+if (process.env.NODE_ENV === 'production') {
+  validateEnv();
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{

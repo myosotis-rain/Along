@@ -1,8 +1,25 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
-export default function Composer({ onSend }: { onSend: (text: string) => void }) {
+interface ComposerProps {
+  onSend: (text: string) => void;
+  initialText?: string;
+  onTextChange?: (text: string) => void;
+}
+
+export default function Composer({ onSend, initialText, onTextChange }: ComposerProps) {
   const [val, setVal] = useState("");
+
+  useEffect(() => {
+    if (initialText !== undefined) {
+      setVal(initialText);
+    }
+  }, [initialText]);
+
+  const handleChange = (text: string) => {
+    setVal(text);
+    onTextChange?.(text);
+  };
 
   const handleSubmit = () => {
     if (!val.trim()) return;
@@ -19,7 +36,7 @@ export default function Composer({ onSend }: { onSend: (text: string) => void })
               className="flex-1 bg-transparent outline-none text-base sm:text-sm placeholder:text-gray-500"
               placeholder="Message Along…" 
               value={val}
-              onChange={e => setVal(e.target.value)}
+              onChange={e => handleChange(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleSubmit()}
             />
             <button 

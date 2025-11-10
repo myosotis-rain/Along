@@ -4,36 +4,65 @@ export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
   try {
-    const { taskTitle, category, estimateMin } = await req.json();
+    const { taskTitle, category, estimateMin, description } = await req.json();
     const apiKey = process.env.OPENAI_API_KEY;
     
     if (!apiKey) {
-      // Fallback microsteps when no API key
-      const fallbackSteps = [
-        "Open the necessary application or document",
-        "Set up workspace with all needed materials",
-        "Break the task into 2-3 smaller parts",
-        "Start with the easiest or most important part",
-        "Set a timer for focused work (15-25 minutes)"
-      ];
       return NextResponse.json({ 
-        microsteps: fallbackSteps.slice(0, 3 + Math.floor(Math.random() * 2))
+        error: "Step generation unavailable. Break this down yourself for now.",
+        microsteps: []
       });
     }
 
-    const prompt = `As a productivity coach, break down this task into 3-5 concrete, actionable microsteps. Make them specific, gentle, and easy to start:
+    const taskContext = description || taskTitle;
+    const prompt = `I'm procrastinating on this task: "${taskContext}" (${estimateMin} min, ${category})
 
-Task: "${taskTitle}"
-Category: ${category}
-Estimated time: ${estimateMin} minutes
+Break it into a complete sequence of tiny microsteps that covers the entire task from start to finish. Each step should be:
+- The literal next physical action I can take
+- So small I can't say no to it
+- Specific enough that I know exactly what to do
+- 3-6 words max, starting with an action verb
 
-Focus on:
-- Very specific first steps (no vague "plan" or "research")
-- Physical actions someone can take immediately  
-- Breaking down overwhelming parts
-- Focus-friendly approach (timers, breaks, environment setup)
+Generate ALL steps needed to complete the entire task, not just the first few. Include beginning, middle, and end steps.
 
-Return only the microsteps as a simple list, one per line. Each should be a complete sentence starting with an action verb.`;
+Think like this:
+- NOT: "Research the topic" → TOO VAGUE
+- YES: "Open Google and search '[specific term]'"
+- NOT: "Write essay" → TOO BIG  
+- YES: "Write one sentence about main point"
+- NOT: "Study chapter" → TOO VAGUE
+- YES: "Read first page of chapter 3"
+
+Examples of COMPLETE task breakdowns:
+For "Write history essay":
+- Open Google Docs
+- Type essay title  
+- Write thesis sentence
+- Find three sources online
+- Draft first paragraph
+- Write second paragraph
+- Write third paragraph
+- Draft conclusion
+- Read entire essay
+- Fix grammar errors
+- Check citation format
+- Submit final essay
+
+For "Study for math exam":
+- Open textbook to chapter 5
+- Read first example problem
+- Copy problem in notebook  
+- Solve step by step
+- Check answer in back
+- Try second problem
+- Solve third problem
+- Review chapter summary
+- Take practice quiz
+- Check quiz answers
+- Review wrong answers
+- Create formula cheat sheet
+
+Return ONLY the complete microsteps sequence, one per line.`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -43,9 +72,13 @@ Return only the microsteps as a simple list, one per line. Each should be a comp
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        temperature: 0.7,
-        max_tokens: 300,
+        temperature: 0.5,
+        max_tokens: 800,
         messages: [
+          { 
+            role: "system", 
+            content: "You are an expert at breaking down tasks into complete sequences of tiny, actionable steps that eliminate procrastination. Focus on providing ALL steps needed from start to finish."
+          },
           { role: "user", content: prompt }
         ]
       })
@@ -64,57 +97,14 @@ Return only the microsteps as a simple list, one per line. Each should be a comp
       .map((step: string) => step.trim())
       .filter((step: string) => step.length > 0)
       .map((step: string) => step.replace(/^\d+\.\s*/, '').replace(/^[-•]\s*/, ''))
-      .slice(0, 6); // Limit to 6 steps max
 
     return NextResponse.json({ microsteps });
   } catch (error) {
     console.error("Microsteps generation error:", error);
     
-    // Enhanced fallback based on task details
-    const { category = "other" } = await req.json().catch(() => ({}));
-    
-    const categorySteps = {
-      study: [
-        "Find a quiet space and gather study materials",
-        "Set a 25-minute timer for focused study",
-        "Review the main topic or chapter overview",
-        "Take notes on key concepts in your own words",
-        "Take a 5-minute break when timer goes off"
-      ],
-      writing: [
-        "Open your writing app and create a new document",
-        "Write down 3 main points you want to cover", 
-        "Set a timer for 15 minutes of free writing",
-        "Don't worry about perfect grammar, just get ideas down",
-        "Read through and pick the best parts to develop"
-      ],
-      chores: [
-        "Set upbeat music or a podcast to play",
-        "Gather all supplies needed in one place",
-        "Set a timer for 15-20 minutes",
-        "Start with the easiest or most visible part",
-        "Reward yourself with a break after the timer"
-      ],
-      admin: [
-        "Gather all relevant documents or information",
-        "Open the necessary website or application", 
-        "Set a timer for 20 minutes of focused work",
-        "Complete one small section at a time",
-        "Take breaks every 20 minutes to avoid overwhelm"
-      ]
-    };
-
-    const fallback = categorySteps[category as keyof typeof categorySteps] || [
-      "Break this down into the smallest first step",
-      "Set up your workspace with everything you need",
-      "Set a timer for 15-25 minutes",
-      "Focus on just starting, not finishing perfectly",
-      "Plan a small reward for when you complete it"
-    ];
-
     return NextResponse.json({ 
-      microsteps: fallback.slice(0, 4),
-      fallback: true 
+      error: "Couldn't generate steps right now. Try again later.",
+      microsteps: []
     });
   }
 }

@@ -23,6 +23,7 @@
     "googleapis": "^164.1.0",
     "lucide-react": "^0.548.0",
     "next": "16.0.1",
+    "openai": "^6.8.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "tailwind-merge": "^3.3.1",
@@ -49,5 +50,17 @@
     "productivity",
     "mental-health"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "main": "jest.config.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/myosotis-rain/Along.git"
+  },
+  "author": "",
+  "bugs": {
+    "url": "https://github.com/myosotis-rain/Along/issues"
+  }
 }

@@ -30,6 +30,7 @@ type Actions = AppState & {
   removeMessage: (id: string) => void;
   addTask: (t: Task) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
+  removeTask: (id: string) => void;
   addSchedule: (s: ScheduleItem) => void;
   removeSchedule: (id: string) => void;
   addSession: (s: FocusSession) => void;
@@ -70,6 +71,9 @@ export const useApp = create<Actions>()(
       addTask: (t) => set(s => ({ tasks: [t, ...s.tasks] })),
       updateTask: (id, updates) => set(s => ({
         tasks: s.tasks.map(t => t.id === id ? { ...t, ...updates } : t)
+      })),
+      removeTask: (id) => set(s => ({
+        tasks: s.tasks.filter(t => t.id !== id)
       })),
       addSchedule: (e) => set(s => ({ schedule: [...s.schedule, e] })),
       removeSchedule: (id) => set(s => ({

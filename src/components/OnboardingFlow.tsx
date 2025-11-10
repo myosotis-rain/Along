@@ -1,11 +1,13 @@
 "use client";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRouter } from "next/navigation";
 import { useApp } from "@/lib/store";
 
 type OnboardingStep = "welcome" | "profile" | "calendar" | "complete";
 
 export default function OnboardingFlow() {
+  const router = useRouter();
   const { userProfile, updateUserProfile, completeOnboarding } = useApp();
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("welcome");
   const [name, setName] = useState(userProfile.name || "");
@@ -13,21 +15,48 @@ export default function OnboardingFlow() {
 
   // Initialize onboarding state and handle calendar connection
   useEffect(() => {
-    // If user has a name but hasn't connected calendar yet, start at calendar step
-    if (userProfile.name && !userProfile.hasConnectedGoogleCalendar && currentStep === "welcome") {
-      setCurrentStep("calendar");
-    }
-    
-    // If user just connected calendar, go to complete step
-    if (userProfile.hasConnectedGoogleCalendar && currentStep === "calendar") {
-      setCurrentStep("complete");
+    if (typeof window === "undefined") {
+      return;
     }
 
-    // If user has both name and calendar connected, show complete step
-    if (userProfile.name && userProfile.hasConnectedGoogleCalendar && currentStep !== "complete") {
-      setCurrentStep("complete");
+    const urlParams = new URLSearchParams(window.location.search);
+    const onboarding = urlParams.get("onboarding");
+    const connected = urlParams.get("connected");
+
+    if (onboarding === "calendar" && connected === "1") {
+      updateUserProfile({ hasConnectedGoogleCalendar: true });
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, [userProfile.hasConnectedGoogleCalendar, userProfile.name, currentStep]);
+
+    let frame = 0;
+    let nextStep: OnboardingStep | null = null;
+
+    if (userProfile.name && !userProfile.hasConnectedGoogleCalendar) {
+      if (currentStep === "welcome") {
+        nextStep = "profile";
+      } else if (currentStep === "profile") {
+        nextStep = "calendar";
+      }
+    }
+
+    if (userProfile.hasConnectedGoogleCalendar && currentStep === "calendar") {
+      nextStep = "complete";
+    }
+
+    if (userProfile.name && userProfile.hasConnectedGoogleCalendar && currentStep !== "complete") {
+      nextStep = "complete";
+    }
+
+    if (nextStep && nextStep !== currentStep) {
+      frame = window.requestAnimationFrame(() => setCurrentStep(nextStep as OnboardingStep));
+    }
+
+    return () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+    };
+  }, [currentStep, updateUserProfile, userProfile.hasConnectedGoogleCalendar, userProfile.name]);
 
   const handleNameSubmit = () => {
     if (name.trim()) {
@@ -53,56 +82,67 @@ export default function OnboardingFlow() {
 
   const handleComplete = () => {
     completeOnboarding();
+    router.push("/"); // Redirect to the main planning page
   };
 
   const stepConfig = {
     welcome: {
       title: "Welcome to Along",
-      subtitle: "Your calm, pragmatic planning companion",
+      subtitle: "Your planning companion for academic success",
       content: (
-        <div className="space-y-6 text-center">
-          <div className="w-20 h-20 mx-auto bg-gradient-to-br from-purple-500 to-pink-500 rounded-3xl flex items-center justify-center">
-            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+        <div className="space-y-8 text-center">
+          <div className="relative">
+            <div className="w-20 h-20 mx-auto bg-brand rounded-3xl flex items-center justify-center shadow-sm">
+              <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                {/* Larger connected round petals */}
+                <circle cx="12" cy="7" r="3"/>
+                <circle cx="12" cy="7" r="3" transform="rotate(72 12 12)"/>
+                <circle cx="12" cy="7" r="3" transform="rotate(144 12 12)"/>
+                <circle cx="12" cy="7" r="3" transform="rotate(216 12 12)"/>
+                <circle cx="12" cy="7" r="3" transform="rotate(288 12 12)"/>
+                
+                {/* Large hollow center */}
+                <circle cx="12" cy="12" r="2.5" strokeWidth="1.5"/>
+              </svg>
+            </div>
           </div>
-          <div className="space-y-3">
-            <p className="text-gray-600">
+          <div className="space-y-5">
+            <p className="text-gray-700 text-lg leading-relaxed">
               Along helps you break down tasks, externalize time, and make better decisions about what to work on.
             </p>
-            <p className="text-gray-600">
-              Let's get you set up in just a few steps.
+            <p className="text-sm text-gray-500 font-medium">
+              Let&rsquo;s get you set up in just a few steps.
             </p>
           </div>
           <button 
             onClick={() => setCurrentStep("profile")}
-            className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-medium hover:from-purple-600 hover:to-pink-600 transition-all"
+            className="w-full py-3.5 bg-cta text-white rounded-2xl font-medium hover:opacity-90 transition-all shadow-sm"
           >
-            Get Started
+            Get started
           </button>
         </div>
       )
     },
     profile: {
-      title: "Tell me about yourself",
-      subtitle: "This helps Along personalize your experience",
+      title: "What's your name?",
+      subtitle: "This helps personalize your experience",
       content: (
-        <div className="space-y-6">
+        <div className="space-y-7">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              What should I call you? *
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Your name
             </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Your name"
-              className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+              placeholder="Enter your first name"
+              className="w-full p-4 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-200 focus:border-blue-300 outline-none text-gray-900 placeholder-gray-400 bg-white/80"
               onKeyDown={(e) => e.key === 'Enter' && handleNameSubmit()}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 mb-3">
               Email (optional)
             </label>
             <input
@@ -110,14 +150,14 @@ export default function OnboardingFlow() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="your@email.com"
-              className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+              className="w-full p-4 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-200 focus:border-blue-300 outline-none text-gray-900 placeholder-gray-400 bg-white/80"
               onKeyDown={(e) => e.key === 'Enter' && handleNameSubmit()}
             />
           </div>
           <button 
             onClick={handleNameSubmit}
             disabled={!name.trim()}
-            className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-medium hover:from-purple-600 hover:to-pink-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3.5 bg-cta text-white rounded-2xl font-medium hover:opacity-90 transition-all shadow-sm disabled:bg-gray-300 disabled:cursor-not-allowed disabled:shadow-none"
           >
             Continue
           </button>
@@ -126,23 +166,31 @@ export default function OnboardingFlow() {
     },
     calendar: {
       title: "Connect your calendar",
-      subtitle: "Along works best when it knows your schedule",
+      subtitle: "Get better suggestions that fit your actual schedule",
       content: (
-        <div className="space-y-6">
-          <div className="bg-purple-50 p-4 rounded-xl">
-            <h3 className="font-medium text-purple-900 mb-2">Why connect Google Calendar?</h3>
-            <ul className="text-sm text-purple-700 space-y-1">
-              <li>• Find free time slots for focus sessions</li>
-              <li>• Avoid scheduling conflicts</li>
-              <li>• Get realistic time estimates</li>
-              <li>• Smart suggestions based on your actual schedule</li>
-            </ul>
+        <div className="space-y-7">
+          <div className="bg-blue-50/80 border border-blue-100 p-6 rounded-2xl">
+            <div className="flex items-start gap-4">
+              <div className="w-8 h-8 bg-blue-500 rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-medium text-gray-800 mb-3">This enables Along to:</h3>
+                <ul className="text-sm text-gray-600 space-y-2">
+                  <li>• Find free time between classes for studying</li>
+                  <li>• Suggest realistic blocks for assignments</li>
+                  <li>• Avoid conflicts with exams and deadlines</li>
+                </ul>
+              </div>
+            </div>
           </div>
           
           <div className="space-y-3">
             <button 
               onClick={handleCalendarConnect}
-              className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-medium hover:from-purple-600 hover:to-pink-600 transition-all flex items-center justify-center gap-2"
+              className="w-full py-3.5 bg-cta text-white rounded-2xl font-medium hover:opacity-90 transition-all shadow-sm flex items-center justify-center gap-2"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -154,41 +202,43 @@ export default function OnboardingFlow() {
             </button>
             <button 
               onClick={handleSkipCalendar}
-              className="w-full py-3 border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all"
+              className="w-full py-3.5 border border-gray-200 text-gray-600 rounded-2xl font-medium hover:bg-gray-50 transition-all"
             >
               Skip for now
             </button>
           </div>
           
-          <p className="text-xs text-gray-500 text-center">
-            You can always connect your calendar later in Settings
+          <p className="text-xs text-gray-500 text-center font-medium">
+            You can always connect your calendar later in settings
           </p>
         </div>
       )
     },
     complete: {
-      title: `Welcome, ${userProfile.name || name || 'there'}! 🎉`,
-      subtitle: "You're all set up and ready to get things done",
+      title: `All set, ${userProfile.name || name || 'there'}!`,
+      subtitle: "Ready to tackle your coursework",
       content: (
-        <div className="space-y-6 text-center">
-          <div className="w-20 h-20 mx-auto bg-gradient-to-br from-green-500 to-emerald-500 rounded-3xl flex items-center justify-center">
-            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+        <div className="space-y-8 text-center">
+          <div className="w-20 h-20 mx-auto bg-green-50 border border-green-100 rounded-3xl flex items-center justify-center shadow-sm">
+            <svg className="w-10 h-10 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <div className="space-y-3">
-            <p className="text-gray-600">
-              I'm here to help you break things down, externalize time, and make thoughtful decisions about what to work on.
+          <div className="space-y-5">
+            <p className="text-gray-700 text-lg leading-relaxed">
+              Tell Along what assignment or project you are working on, and it will help break it down into manageable pieces.
             </p>
-            <p className="text-gray-600">
-              Ready to get started?
-            </p>
+            <div className="bg-blue-50/80 border border-blue-100 rounded-2xl p-5">
+              <p className="text-sm text-gray-600">
+                Try: &ldquo;I need to write my essay&rdquo; or &ldquo;I have a lab report due&rdquo;
+              </p>
+            </div>
           </div>
           <button 
             onClick={handleComplete}
-            className="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl font-medium hover:from-green-600 hover:to-emerald-600 transition-all"
+            className="w-full py-3.5 bg-cta text-white rounded-2xl font-medium hover:opacity-90 transition-all shadow-sm"
           >
-            Start Using Along
+            Start planning
           </button>
         </div>
       )
@@ -198,35 +248,35 @@ export default function OnboardingFlow() {
   const currentStepConfig = stepConfig[currentStep];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-b from-rose-50 via-fuchsia-50 to-orange-50 flex items-center justify-center p-4">
       <motion.div 
-        className="w-full max-w-md"
+        className="w-full max-w-lg"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <div className="card p-8 space-y-6">
+        <div className="card p-8 space-y-7">
           {/* Progress indicator */}
-          <div className="flex justify-center space-x-2 mb-8">
+          <div className="flex justify-center space-x-3 mb-8">
             {(["welcome", "profile", "calendar", "complete"] as OnboardingStep[]).map((step, index) => (
               <div
                 key={step}
-                className={`w-2 h-2 rounded-full transition-colors ${
+                className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
                   step === currentStep
-                    ? "bg-purple-500"
+                    ? "bg-purple-400 scale-125"
                     : index < (["welcome", "profile", "calendar", "complete"] as OnboardingStep[]).indexOf(currentStep)
-                    ? "bg-purple-300"
+                    ? "bg-purple-200"
                     : "bg-gray-200"
                 }`}
               />
             ))}
           </div>
 
-          <div className="text-center space-y-2">
-            <h1 className="text-2xl font-bold text-gray-900">
+          <div className="text-center space-y-3">
+            <h1 className="text-2xl font-semibold text-gray-900">
               {currentStepConfig.title}
             </h1>
-            <p className="text-gray-600">
+            <p className="text-gray-600 text-base">
               {currentStepConfig.subtitle}
             </p>
           </div>

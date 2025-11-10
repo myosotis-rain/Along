@@ -20,11 +20,6 @@ const ScheduleIcon = ({ className = "w-5 h-5" }) => (
   </svg>
 );
 
-const FocusIcon = ({ className = "w-5 h-5" }) => (
-  <svg className={className} fill="currentColor" viewBox="0 0 24 24">
-    <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,6A6,6 0 0,0 6,12A6,6 0 0,0 12,18A6,6 0 0,0 18,12A6,6 0 0,0 12,6M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8Z"/>
-  </svg>
-);
 
 const InsightsIcon = ({ className = "w-5 h-5" }) => (
   <svg className={className} fill="currentColor" viewBox="0 0 24 24">
@@ -36,10 +31,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   
   const tabs = [
-    { href: "/", label: "Chat", icon: ChatIcon },
-    { href: "/planner", label: "Plan", icon: PlanIcon },
+    { href: "/", label: "Plan", icon: PlanIcon },
+    { href: "/chat", label: "Chat", icon: ChatIcon },
     { href: "/schedule", label: "Schedule", icon: ScheduleIcon },
-    { href: "/focus", label: "Focus", icon: FocusIcon },
     { href: "/insights", label: "Insights", icon: InsightsIcon },
   ];
 
