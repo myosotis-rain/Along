@@ -559,14 +559,14 @@ export default function PlanPage() {
                   <label className="text-xs font-medium text-gray-600 mb-2 block">How urgent is this?</label>
                   <div className="flex space-x-2">
                     {[
-                      { value: 'low', label: 'Low', selected: 'bg-gray-200 text-gray-800 border-gray-300', unselected: 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100' },
-                      { value: 'medium', label: 'Medium', selected: 'bg-blue-100 text-gray-800 border-blue-200', unselected: 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100' },
-                      { value: 'high', label: 'High', selected: 'bg-red-100 text-gray-800 border-red-200', unselected: 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100' }
+                      { value: 'low' as const, label: 'Low', selected: 'bg-gray-200 text-gray-800 border-gray-300', unselected: 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100' },
+                      { value: 'medium' as const, label: 'Medium', selected: 'bg-blue-100 text-gray-800 border-blue-200', unselected: 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100' },
+                      { value: 'high' as const, label: 'High', selected: 'bg-red-100 text-gray-800 border-red-200', unselected: 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100' }
                     ].map(({ value, label, selected, unselected }) => (
                       <button
                         key={value}
                         type="button"
-                        onClick={() => setPriority(value as Task["priority"])}
+                        onClick={() => setPriority(value)}
                         className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium border transition-all duration-200 ${
                           priority === value ? selected : unselected
                         }`}
