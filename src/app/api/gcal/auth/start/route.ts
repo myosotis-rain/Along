@@ -7,6 +7,13 @@ function getUserIdFromHeaders(req: NextRequest): string {
 
 export async function GET(req: NextRequest) {
   try {
+    // Check if Google OAuth credentials are configured
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+      console.error("Google Calendar integration not configured. Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET.");
+      const baseUrl = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+      return NextResponse.redirect(`${baseUrl}/schedule?error=config_missing`);
+    }
+    
     const oauth2Client = getOAuthClient();
     
     // In production, you'd sign a JWT with the user's ID

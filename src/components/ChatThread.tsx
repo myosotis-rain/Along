@@ -23,22 +23,6 @@ function isSameDay(a: number, b: number) {
   );
 }
 
-function formatDayLabel(ts: number) {
-  const date = new Date(ts);
-  const today = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
-
-  if (isSameDay(ts, today.getTime())) return "Today";
-  if (isSameDay(ts, yesterday.getTime())) return "Yesterday";
-
-  return new Intl.DateTimeFormat(undefined, {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-  }).format(date);
-}
-
 function formatTime(ts: number) {
   return new Intl.DateTimeFormat(undefined, {
     hour: "numeric",
@@ -93,7 +77,6 @@ export default function ChatThread({ items, onAction, onCalendarAction, calendar
     <div className="space-y-3 pb-24 sm:pb-20">
       {items.map((m, i) => {
         const ts = timestamps[i];
-        const showDayDivider = i === 0 || !isSameDay(ts, timestamps[i - 1]);
 
         return (
           <div key={m.id}>
@@ -165,6 +148,11 @@ export default function ChatThread({ items, onAction, onCalendarAction, calendar
                     {action.type === "add_to_planner" && (
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      </svg>
+                    )}
+                    {action.type === "add_to_calendar" && (
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14V7H5v14z" />
                       </svg>
                     )}
                       {loading ? "Working..." : action.label}

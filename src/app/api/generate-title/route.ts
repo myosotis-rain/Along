@@ -3,8 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
+  const { description } = await req.json();
+  
   try {
-    const { description } = await req.json();
     const apiKey = process.env.OPENAI_API_KEY;
     
     if (!apiKey) {
@@ -32,7 +33,7 @@ Return ONLY the title, nothing else.`;
         "Authorization": `Bearer ${apiKey}` 
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "gpt-5",
         temperature: 0.3,
         max_tokens: 50,
         messages: [
@@ -60,7 +61,6 @@ Return ONLY the title, nothing else.`;
     console.error("Title generation error:", error);
     
     // Fallback: create title from first few words
-    const { description } = await req.json();
     const fallbackTitle = description
       .split(' ')
       .slice(0, 4)

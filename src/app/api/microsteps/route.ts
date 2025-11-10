@@ -4,7 +4,7 @@ export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
   try {
-    const { taskTitle, category, estimateMin, description } = await req.json();
+    const { taskTitle, category, estimateMin, description, existingSteps = [], refine = false } = await req.json();
     const apiKey = process.env.OPENAI_API_KEY;
     
     if (!apiKey) {
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     }
 
     const taskContext = description || taskTitle;
-    const prompt = `I'm procrastinating on this task: "${taskContext}" (${estimateMin} min, ${category})
+    const basePrompt = `I'm procrastinating on this task: "${taskContext}" (${estimateMin} min, ${category})
 
 Break it into a complete sequence of tiny microsteps that covers the entire task from start to finish. Each step should be:
 - The literal next physical action I can take
@@ -63,6 +63,12 @@ For "Study for math exam":
 - Create formula cheat sheet
 
 Return ONLY the complete microsteps sequence, one per line.`;
+    const refinePrompt = existingSteps.length
+      ? `\n\nCurrent microsteps: ${existingSteps.join(" | ")}\nRewrite these by making each step more concrete (3-6 words, action-first).`
+      : "";
+    const prompt = refine ? `${basePrompt}${refinePrompt}` : basePrompt;
+
+    const model = process.env.OPENAI_MODEL_MICROSTEPS || process.env.OPENAI_MODEL || "gpt-4o-mini";
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -71,7 +77,7 @@ Return ONLY the complete microsteps sequence, one per line.`;
         "Authorization": `Bearer ${apiKey}` 
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model,
         temperature: 0.5,
         max_tokens: 800,
         messages: [

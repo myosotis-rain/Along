@@ -2,16 +2,18 @@
 import Shell from "@/components/Shell";
 import AppWrapper from "@/components/AppWrapper";
 import { useApp } from "@/lib/store";
-import { Fragment, useEffect, useState, type DragEvent, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useState, useRef, type DragEvent, type KeyboardEvent, type TouchEvent as ReactTouchEvent } from "react";
+import { useRouter } from "next/navigation";
 import { formatDuration } from "@/lib/utils";
 import type { Task } from "@/types/app";
 
 export default function PlanPage() {
   const { tasks, addTask, updateTask, removeTask, userProfile } = useApp();
+  const router = useRouter();
   const [title, setTitle] = useState("");
   const [priority, setPriority] = useState<"high" | "medium" | "low" | null>(null);
   const [dueDate, setDueDate] = useState("");
-  const [estimateMin, setEstimateMin] = useState(30);
+  const [estimateMin, setEstimateMin] = useState(25);
   const [editingTime, setEditingTime] = useState(false);
   const [timeInput, setTimeInput] = useState("");
   const [editingTaskTitle, setEditingTaskTitle] = useState<string | null>(null);
@@ -19,11 +21,16 @@ export default function PlanPage() {
   const [editingPriority, setEditingPriority] = useState<string | null>(null);
   const [editingDueDate, setEditingDueDate] = useState<string | null>(null);
   const [dueDateInput, setDueDateInput] = useState("");
+  const [editingTaskEstimate, setEditingTaskEstimate] = useState<{ taskId: string | null; value: string }>({
+    taskId: null,
+    value: "",
+  });
   const [showMobileDetails, setShowMobileDetails] = useState(false);
+  const [microstepUndo, setMicrostepUndo] = useState<{ taskId: string; index: number; step: string; completed: boolean } | null>(null);
 
   // Handle clicking on time display to edit
   function startTimeEdit() {
-    setTimeInput(formatDuration(estimateMin));
+    setTimeInput(estimateMin ? formatDuration(estimateMin) : "");
     setEditingTime(true);
   }
 
@@ -32,6 +39,8 @@ export default function PlanPage() {
     const parsed = parseTimeInput(timeInput);
     if (parsed !== null) {
       setEstimateMin(Math.max(10, Math.min(360, parsed))); // Clamp between 10min and 6hrs
+    } else if (!timeInput.trim()) {
+      setEstimateMin(0);
     }
     setEditingTime(false);
   }
@@ -130,19 +139,50 @@ export default function PlanPage() {
     setDueDateInput("");
   }
 
+  function startEditTaskEstimate(taskId: string, currentEstimate?: number) {
+    setEditingTaskEstimate({
+      taskId,
+      value: currentEstimate && currentEstimate > 0 ? formatDuration(currentEstimate) : "",
+    });
+  }
+
+  function saveTaskEstimate(taskId: string) {
+    if (editingTaskEstimate.taskId !== taskId) return;
+    const trimmed = editingTaskEstimate.value.trim();
+    if (!trimmed) {
+      updateTask(taskId, { estimateMin: 0 });
+      setEditingTaskEstimate({ taskId: null, value: "" });
+      return;
+    }
+    const parsed = parseTimeInput(trimmed);
+    if (parsed !== null) {
+      const clamped = Math.max(10, Math.min(360, parsed));
+      updateTask(taskId, { estimateMin: clamped });
+      setEditingTaskEstimate({ taskId: null, value: "" });
+    }
+  }
+
+  function cancelTaskEstimate() {
+    setEditingTaskEstimate({ taskId: null, value: "" });
+  }
+
   function handleQuickEstimateEdit() {
     setShowMobileDetails(true);
     startTimeEdit();
   }
 
   const category: Task["category"] = "other";
-  const [loadingSteps, setLoadingSteps] = useState<string | null>(null);
+  const [loadingSteps, setLoadingSteps] = useState<Record<string, "base" | "refine">>({});
+  const [hasGeneratedSteps, setHasGeneratedSteps] = useState<Record<string, boolean>>({});
   const [stepErrors, setStepErrors] = useState<{ [key: string]: string }>({});
   const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<"all" | "active" | "completed" | "overdue">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [draggingStep, setDraggingStep] = useState<{ taskId: string | null; fromIndex: number | null }>({ taskId: null, fromIndex: null });
   const [dropTarget, setDropTarget] = useState<{ taskId: string | null; index: number | null }>({ taskId: null, index: null });
+  const touchHoldTimeout = useRef<number | null>(null);
+  const [touchDrag, setTouchDrag] = useState<{ taskId: string; fromIndex: number } | null>(null);
+  const microstepRefs = useRef<Record<string, Array<HTMLElement | null>>>({});
   const [editingStep, setEditingStep] = useState<{ taskId: string | null; index: number | null; value: string }>({
     taskId: null,
     index: null,
@@ -172,6 +212,20 @@ export default function PlanPage() {
   }, []);
 
   useEffect(() => {
+    setHasGeneratedSteps(prev => {
+      let changed = false;
+      const next = { ...prev };
+      tasks.forEach(task => {
+        if (task.microsteps.length > 0 && !next[task.id]) {
+          next[task.id] = true;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [tasks]);
+
+  useEffect(() => {
     setTimers(prev => {
       let changed = false;
       const next = { ...prev };
@@ -191,6 +245,12 @@ export default function PlanPage() {
       return changed ? next : prev;
     });
   }, [tasks]);
+
+  useEffect(() => {
+    if (!microstepUndo) return;
+    const timer = setTimeout(() => setMicrostepUndo(null), 5000);
+    return () => clearTimeout(timer);
+  }, [microstepUndo]);
   function toggleMicrostep(taskId: string, stepIndex: number) {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
@@ -308,7 +368,7 @@ export default function PlanPage() {
     });
     setTitle("");
     setDueDate("");
-    setEstimateMin(30);
+    setEstimateMin(25);
     setPriority(null);
     setShowMobileDetails(false);
   }
@@ -336,11 +396,28 @@ export default function PlanPage() {
     })
   );
 
-  async function generateMicrosteps(id: string) {
-    const task = tasks.find(t => t.id === id);
-    if (!task || loadingSteps === id) return;
+  function handleAddToSchedule(task: Task) {
+    // Create a prompt for the chat page about scheduling this task
+    const prompt = [
+      `Help me schedule "${task.title}" as a calendar block.`,
+      task.description ? `Context: ${task.description}.` : "",
+      task.estimateMin ? `It should take about ${formatDuration(task.estimateMin)}.` : "",
+      task.dueDate ? `It's due on ${new Date(task.dueDate).toLocaleDateString()}.` : "",
+      `Please suggest a time slot, confirm it with me, and then create an event using a short Title Case name based on "${task.title}" (not this entire message).`,
+      `When you create the event, reuse the exact slot we agree on—don't change the start/end time.`
+    ].filter(Boolean).join(" ");
     
-    setLoadingSteps(id);
+    // Navigate to chat page with the prompt
+    const params = new URLSearchParams({ prompt: prompt });
+    router.push(`/chat?${params.toString()}`);
+  }
+
+  async function generateMicrosteps(id: string, options?: { refine?: boolean }) {
+    const task = tasks.find(t => t.id === id);
+    if (!task || loadingSteps[id]) return;
+    
+    const mode: "base" | "refine" = options?.refine ? "refine" : "base";
+    setLoadingSteps(prev => ({ ...prev, [id]: mode }));
     setStepErrors(prev => ({ ...prev, [id]: '' }));
     
     try {
@@ -351,7 +428,9 @@ export default function PlanPage() {
           taskTitle: task.title,
           description: task.description,
           category: task.category,
-          estimateMin: task.estimateMin
+          estimateMin: task.estimateMin,
+          existingSteps: task.microsteps,
+          refine: options?.refine ?? false,
         })
       });
       
@@ -362,13 +441,18 @@ export default function PlanPage() {
       } else {
         const incomingSteps: string[] = data.microsteps || [];
         updateTask(id, { microsteps: incomingSteps });
+        setHasGeneratedSteps(prev => (prev[id] ? prev : { ...prev, [id]: true }));
         setStepErrors(prev => ({ ...prev, [id]: '' }));
       }
     } catch (error) {
       console.error("Failed to generate microsteps:", error);
       setStepErrors(prev => ({ ...prev, [id]: "Network error. Please try again." }));
     } finally {
-      setLoadingSteps(null);
+      setLoadingSteps(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
     }
   }
 
@@ -426,11 +510,10 @@ export default function PlanPage() {
     const completedSteps = task.completedSteps ? [...task.completedSteps] : [];
     const [moved] = microsteps.splice(fromIndex, 1);
     const [movedStatus] = completedSteps.splice(fromIndex, 1);
-    const normalizedIndex = fromIndex < toIndex ? Math.max(0, toIndex - 1) : toIndex;
-    microsteps.splice(normalizedIndex, 0, moved);
+    microsteps.splice(toIndex, 0, moved);
     if (completedSteps.length || typeof movedStatus === "boolean") {
       const status = typeof movedStatus === "boolean" ? movedStatus : false;
-      completedSteps.splice(normalizedIndex, 0, status);
+      completedSteps.splice(toIndex, 0, status);
     }
     updateTask(taskId, { microsteps, completedSteps });
   }
@@ -440,6 +523,115 @@ export default function PlanPage() {
     event.preventDefault();
     reorderMicrosteps(taskId, draggingStep.fromIndex, targetIndex);
     handleDragEnd();
+  }
+
+  function removeMicrostep(taskId: string, index: number) {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    const microsteps = [...task.microsteps];
+    const [removedStep] = microsteps.splice(index, 1);
+    const completedSteps = task.completedSteps ? [...task.completedSteps] : [];
+    let removedCompleted = false;
+    if (completedSteps.length) {
+      removedCompleted = completedSteps.splice(index, 1)[0] ?? false;
+    }
+    updateTask(taskId, { microsteps, completedSteps });
+    setMicrostepUndo({
+      taskId,
+      index,
+      step: removedStep,
+      completed: removedCompleted,
+    });
+    if (editingStep.taskId === taskId && editingStep.index === index) {
+      setEditingStep({ taskId: null, index: null, value: "" });
+    }
+  }
+
+  function undoRemoveMicrostep() {
+    if (!microstepUndo) return;
+    const { taskId, index, step, completed } = microstepUndo;
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) {
+      setMicrostepUndo(null);
+      return;
+    }
+    const microsteps = [...task.microsteps];
+    microsteps.splice(Math.min(index, microsteps.length), 0, step);
+    let completedSteps: boolean[];
+    if (task.completedSteps) {
+      completedSteps = [...task.completedSteps];
+      completedSteps.splice(Math.min(index, completedSteps.length), 0, completed);
+    } else {
+      completedSteps = Array(microsteps.length).fill(false);
+      completedSteps[Math.min(index, completedSteps.length - 1)] = completed;
+    }
+    updateTask(taskId, { microsteps, completedSteps });
+    setMicrostepUndo(null);
+  }
+
+  function registerMicrostepRef(taskId: string, index: number, el: HTMLElement | null) {
+    if (!microstepRefs.current[taskId]) {
+      microstepRefs.current[taskId] = [];
+    }
+    microstepRefs.current[taskId][index] = el;
+  }
+
+  function clearTouchHold() {
+    if (touchHoldTimeout.current) {
+      window.clearTimeout(touchHoldTimeout.current);
+      touchHoldTimeout.current = null;
+    }
+  }
+
+  function handleTouchStart(taskId: string, idx: number) {
+    clearTouchHold();
+    touchHoldTimeout.current = window.setTimeout(() => {
+      setTouchDrag({ taskId, fromIndex: idx });
+      setDropTarget({ taskId, index: idx });
+    }, 180);
+  }
+
+  function handleTouchMove(event: ReactTouchEvent, taskId: string) {
+    if (!touchDrag) {
+      clearTouchHold();
+      return;
+    }
+    event.preventDefault();
+    const touch = event.touches[0];
+    if (!touch) return;
+    const refs = microstepRefs.current[taskId] || [];
+    let targetIndex = refs.length;
+    for (let i = 0; i < refs.length; i += 1) {
+      const el = refs[i];
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      if (touch.clientY < rect.top + rect.height / 2) {
+        targetIndex = i;
+        break;
+      }
+    }
+    if (dropTarget.taskId !== taskId || dropTarget.index !== targetIndex) {
+      setDropTarget({ taskId, index: targetIndex });
+    }
+  }
+
+  function handleTouchEnd(taskId: string) {
+    clearTouchHold();
+    if (!touchDrag || touchDrag.taskId !== taskId) {
+      setTouchDrag(null);
+      return;
+    }
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) {
+      setTouchDrag(null);
+      return;
+    }
+    const refs = microstepRefs.current[taskId] || [];
+    let targetIndex = dropTarget.taskId === taskId && dropTarget.index !== null ? dropTarget.index : touchDrag.fromIndex;
+    targetIndex = Math.max(0, Math.min(targetIndex, refs.length));
+    reorderMicrosteps(taskId, touchDrag.fromIndex, targetIndex);
+    setTouchDrag(null);
+    setDropTarget({ taskId: null, index: null });
   }
 
   function handleEditingKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -589,7 +781,7 @@ export default function PlanPage() {
                 onClick={handleQuickEstimateEdit}
                 className="px-3 py-1 text-xs rounded-full border border-fuchsia-200 text-fuchsia-700 bg-fuchsia-50/60 font-medium"
               >
-                Estimate: {formatDuration(estimateMin)}
+                {estimateMin ? `Estimate: ${formatDuration(estimateMin)}` : "Add estimate"}
               </button>
             </div>
           </div>
@@ -655,13 +847,13 @@ export default function PlanPage() {
                         />
                       </div>
                     ) : (
-                      <span 
-                        className="text-lg font-semibold text-gray-900 cursor-pointer hover:text-fuchsia-600 transition-colors" 
+                      <button 
+                        type="button"
+                        className="text-lg font-semibold text-gray-900 cursor-pointer hover:text-fuchsia-600 transition-colors"
                         onClick={startTimeEdit}
-                        title="Click to edit time"
                       >
-                        {formatDuration(estimateMin)}
-                      </span>
+                        {estimateMin ? formatDuration(estimateMin) : "Add estimate"}
+                      </button>
                     )}
                   </div>
                   <input 
@@ -669,8 +861,9 @@ export default function PlanPage() {
                     min="10"
                     max="360"
                     step="5"
-                    value={estimateMin}
+                    value={estimateMin || 10}
                     onChange={e => setEstimateMin(parseInt(e.target.value))}
+                    disabled={estimateMin === 0}
                     className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-thumb:appearance-none slider-thumb:w-4 slider-thumb:h-4 slider-thumb:rounded-full slider-thumb:bg-fuchsia-500 slider-thumb:cursor-pointer accent-fuchsia-500"
                   />
                   <div className="flex justify-between text-[10px] text-gray-400 mt-1">
@@ -683,7 +876,7 @@ export default function PlanPage() {
           </div>
 
           {/* Action Section */}
-          <div className="flex items-center justify-between pt-2">
+            <div className="flex items-center justify-between pt-2">
             <div className="text-xs text-gray-500 hidden sm:block">
               Press Enter to add, or Shift+Enter for new line
             </div>
@@ -706,11 +899,11 @@ export default function PlanPage() {
           {(["all", "active", "completed", "overdue"] as const).map((filterType) => {
             const label =
               filterType === "all"
-                ? "All"
+                ? "All tasks"
                 : filterType === "active"
                   ? "Active"
                   : filterType === "completed"
-                    ? "Done"
+                    ? "Completed"
                     : "Overdue";
             return (
               <button
@@ -752,6 +945,11 @@ export default function PlanPage() {
           const completed = isTaskCompleted(t);
           const timerMs = getElapsedMs(t.id);
           const timerRunning = timers[t.id]?.isRunning ?? false;
+          const taskLoadingMode = loadingSteps[t.id];
+          const isGeneratingSteps = taskLoadingMode === "base";
+          const isRefiningSteps = taskLoadingMode === "refine";
+          const stepsBusy = Boolean(taskLoadingMode);
+          const showRegenerateLabel = hasGeneratedSteps[t.id] || t.microsteps.length > 0;
           
           return (
           <div key={t.id} className={`card p-4 transition-all ${completed ? 'opacity-75 bg-green-50/50' : ''}`}>
@@ -794,7 +992,7 @@ export default function PlanPage() {
                           title="Edit title"
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 3l4 4L7 19H3v-4L15 3z" />
                           </svg>
                         </button>
                       )}
@@ -819,7 +1017,7 @@ export default function PlanPage() {
                         ))}
                       </div>
                     ) : t.priority ? (
-                      <div className="flex items-center gap-1 group">
+                      <div className="flex items-center gap-1">
                             <span 
                               className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 ${getPriorityColor(t.priority)}`}
                               onClick={() => !completed && startEditPriority(t.id)}
@@ -827,17 +1025,6 @@ export default function PlanPage() {
                             >
                               {t.priority}
                             </span>
-                        {!completed && (
-                          <button
-                            onClick={() => startEditPriority(t.id)}
-                            className="opacity-0 group-hover:opacity-50 hover:opacity-100 p-0.5 text-gray-400 hover:text-purple-600 rounded transition-all"
-                            title="Edit priority"
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                        )}
                       </div>
                     ) : (
                       !completed && (
@@ -878,7 +1065,7 @@ export default function PlanPage() {
                           title={completed ? undefined : "Click to edit due date"}
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14V7H5v14z" />
                           </svg>
                           {new Date(t.dueDate).toLocaleDateString('en', { 
                             month: 'short', 
@@ -893,7 +1080,7 @@ export default function PlanPage() {
                             title="Edit due date"
                           >
                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 3l4 4L7 19H3v-4L15 3z" />
                             </svg>
                           </button>
                         )}
@@ -913,9 +1100,53 @@ export default function PlanPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <div className="text-right text-xs text-gray-500">
-                  <span className="text-[10px] uppercase tracking-wide text-gray-400">~</span>
-                  <span>{formatDuration(t.estimateMin)}</span>
+                <div>
+                  {editingTaskEstimate.taskId === t.id ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={editingTaskEstimate.value}
+                        onChange={(e) => setEditingTaskEstimate(prev => ({ ...prev, value: e.target.value }))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveTaskEstimate(t.id);
+                          if (e.key === 'Escape') cancelTaskEstimate();
+                        }}
+                        className="w-20 text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-transparent"
+                        placeholder="30m"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => saveTaskEstimate(t.id)}
+                        className="p-1 text-green-600 hover:bg-green-50 rounded"
+                        title="Save estimate"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={cancelTaskEstimate}
+                        className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded"
+                        title="Cancel"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => !completed && startEditTaskEstimate(t.id, t.estimateMin)}
+                      className={`text-xs font-medium px-2 py-1 rounded-full border ${
+                        t.estimateMin ? "border-gray-200 text-gray-600 hover:border-fuchsia-200 hover:text-fuchsia-600" : "border-dashed border-gray-300 text-gray-400 hover:border-gray-400"
+                      } transition-colors`}
+                      title={completed ? undefined : "Click to edit estimate"}
+                      disabled={completed}
+                    >
+                      {t.estimateMin ? `~ ${formatDuration(t.estimateMin)}` : "+ Add estimate"}
+                    </button>
+                  )}
                 </div>
                 <button
                   onClick={() => toggleTimer(t.id)}
@@ -983,6 +1214,18 @@ export default function PlanPage() {
                     style={{ width: `${progress}%` }}
                   />
                 </div>
+                {microstepUndo?.taskId === t.id && (
+                  <div className="mt-2 flex items-center justify-between text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-amber-800">
+                    <span>Microstep removed</span>
+                    <button
+                      type="button"
+                      onClick={undoRemoveMicrostep}
+                      className="font-semibold text-amber-900 hover:underline"
+                    >
+                      Undo
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1012,64 +1255,68 @@ export default function PlanPage() {
                     {completed ? "Reset steps" : "Complete all"}
                   </button>
                 </div>
-                <div
-                  className="space-y-1.5 overflow-y-auto max-h-64 pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400"
-                  aria-label="Microsteps list"
-                >
-                  {t.microsteps.map((step: string, idx: number) => {
-                    const isCompleted = t.completedSteps?.[idx] || false;
-                    const isEditing = editingStep.taskId === t.id && editingStep.index === idx;
-                    const draftValue = isEditing ? editingStep.value : step;
-                    const isDraggingThisTask = draggingStep.taskId === t.id;
-                    const isActiveDropZone = dropTarget.taskId === t.id && dropTarget.index === idx;
-                    const rowClasses = [
-                      "flex items-center gap-2.5 rounded-xl border px-3 py-1.5 transition-all duration-200 cursor-pointer",
-                      isEditing
-                        ? "bg-white shadow-[0_12px_35px_rgba(216,180,254,0.45)] border-fuchsia-200"
-                        : isCompleted
-                          ? "bg-fuchsia-50 border-fuchsia-100 text-fuchsia-900/80"
-                          : "bg-white border-gray-100 hover:border-fuchsia-200 hover:shadow-sm",
-                      isActiveDropZone ? "ring-1 ring-fuchsia-300" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ");
+                {(() => {
+                  const isTaskBeingReordered =
+                    (draggingStep.taskId === t.id && draggingStep.fromIndex !== null) ||
+                    touchDrag?.taskId === t.id;
+                  return (
+                    <div
+                      className="space-y-1.5 overflow-y-auto max-h-64 pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400"
+                      aria-label="Microsteps list"
+                    >
+                      {t.microsteps.map((step: string, idx: number) => {
+                        const isCompleted = t.completedSteps?.[idx] || false;
+                        const isEditing = editingStep.taskId === t.id && editingStep.index === idx;
+                        const draftValue = isEditing ? editingStep.value : step;
+                        const isActiveDropZone = dropTarget.taskId === t.id && dropTarget.index === idx;
+                        const rowClasses = [
+                          "flex items-center gap-2.5 rounded-xl border px-3 py-1.5 transition-all duration-200 cursor-pointer",
+                          isEditing
+                            ? "bg-white shadow-[0_12px_35px_rgba(216,180,254,0.45)] border-fuchsia-200"
+                            : isCompleted
+                              ? "bg-fuchsia-50 border-fuchsia-100 text-fuchsia-900/80"
+                              : "bg-white border-gray-100 hover:border-fuchsia-200 hover:shadow-sm",
+                          isActiveDropZone ? "ring-1 ring-fuchsia-300" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ");
 
-                    return (
-                      <Fragment key={`${t.id}-step-${idx}`}>
-                        <div
-                          className={`h-px rounded transition-all duration-150 ${
-                            isDraggingThisTask ? "opacity-100 my-1" : "opacity-0 pointer-events-none"
-                          } ${isActiveDropZone ? "bg-fuchsia-400" : "bg-transparent"}`}
-                          onDragOver={(e) => handleDragOver(e, t.id, idx)}
-                          onDrop={(e) => handleDrop(e, t.id, idx)}
-                        />
-                        <div
-                          className={rowClasses}
-                          onDragOver={(event) => handleDragOver(event, t.id, idx)}
-                          onDrop={(event) => handleDrop(event, t.id, idx)}
-                          onClick={() => {
-                            if (isEditing) return;
-                            toggleMicrostep(t.id, idx);
-                          }}
-                          onDoubleClick={(event) => {
-                            event.stopPropagation();
-                            startEditingStep(t.id, idx, step);
-                          }}
-                        >
-                          <div className="flex flex-col items-center text-gray-400">
-                            <button
-                              type="button"
+                        return (
+                          <Fragment key={`${t.id}-step-${idx}`}>
+                            <div
+                              className={`h-2 rounded transition-all duration-150 ${
+                                dropTarget.taskId === t.id && dropTarget.index === idx ? "bg-fuchsia-400" : "bg-transparent"
+                              } ${isTaskBeingReordered ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+                              onDragOver={(e) => handleDragOver(e, t.id, idx)}
+                              onDrop={(e) => handleDrop(e, t.id, idx)}
+                            />
+                            <div
+                              ref={(el) => registerMicrostepRef(t.id, idx, el)}
+                              className={rowClasses}
                               draggable
                               onDragStart={(event) => handleDragStart(event, t.id, idx)}
                               onDragEnd={handleDragEnd}
-                              onClick={(e) => e.stopPropagation()}
-                              className="rounded-full p-1 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing transition-colors"
-                              aria-label="Reorder microstep"
+                              onDragOver={(event) => handleDragOver(event, t.id, idx + 1)}
+                              onDrop={(event) => handleDrop(event, t.id, idx + 1)}
+                              onTouchStart={() => handleTouchStart(t.id, idx)}
+                              onTouchMove={(event) => handleTouchMove(event, t.id)}
+                              onTouchEnd={() => handleTouchEnd(t.id)}
+                              onTouchCancel={() => handleTouchEnd(t.id)}
+                              onClick={() => {
+                                if (isEditing || touchDrag) return;
+                                toggleMicrostep(t.id, idx);
+                              }}
+                              onDoubleClick={(event) => {
+                                event.stopPropagation();
+                                startEditingStep(t.id, idx, step);
+                              }}
                             >
+                          <div className="flex flex-col items-center text-gray-400">
+                            <div className="rounded-full p-1 text-gray-300">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 9h14M5 15h14" />
                               </svg>
-                            </button>
+                            </div>
                             <span className="mt-1 h-4 w-px rounded-full bg-gray-200" />
                           </div>
                           <button
@@ -1149,19 +1396,34 @@ export default function PlanPage() {
                                 </button>
                               </>
                             ) : (
-                              <button
-                                type="button"
-                                className="rounded-full border border-gray-200 bg-white p-1.5 text-gray-500 hover:border-fuchsia-200 hover:text-fuchsia-600"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  startEditingStep(t.id, idx, step);
-                                }}
-                                aria-label="Edit microstep"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536M4 20h4l10.586-10.586a2 2 0 10-2.828-2.828L6 17.172V20z" />
-                                </svg>
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  className="rounded-full border border-gray-200 bg-white p-1.5 text-gray-500 hover:border-fuchsia-200 hover:text-fuchsia-600"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    startEditingStep(t.id, idx, step);
+                                  }}
+                                  aria-label="Edit microstep"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 3l4 4L7 19H3v-4L15 3z" />
+                                  </svg>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="rounded-full border border-gray-200 bg-white p-1.5 text-gray-400 hover:border-rose-200 hover:text-rose-600"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeMicrostep(t.id, idx);
+                                  }}
+                                  aria-label="Delete microstep"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0h10l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7z" />
+                                  </svg>
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
@@ -1169,13 +1431,13 @@ export default function PlanPage() {
                     );
                   })}
                   <div
-                    className={`h-px rounded transition-all duration-150 ${
-                      draggingStep.taskId === t.id ? 'opacity-100 my-1' : 'opacity-0 pointer-events-none'
-                    } ${dropTarget.taskId === t.id && dropTarget.index === t.microsteps.length ? 'bg-fuchsia-400' : 'bg-transparent'}`}
+                    className="h-2 rounded transition-all duration-150"
                     onDragOver={(e) => handleDragOver(e, t.id, t.microsteps.length)}
                     onDrop={(e) => handleDrop(e, t.id, t.microsteps.length)}
                   />
                 </div>
+                  );
+                })()}
               </div>
             )}
             
@@ -1189,45 +1451,62 @@ export default function PlanPage() {
             <div className="flex flex-wrap gap-2">
               <button 
                 onClick={() => generateMicrosteps(t.id)} 
-                disabled={loadingSteps === t.id}
+                disabled={stepsBusy}
                 className="px-3 py-1 rounded-full border text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap flex items-center"
               >
-                {loadingSteps === t.id ? (
+                {isGeneratingSteps ? (
                   <>
                     <svg className="w-5 h-5 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 818-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
                     Generating...
-                  </>
-                ) : t.microsteps.length > 0 ? (
-                  <>
-                    <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                    </svg>
-                    More specific steps
                   </>
                 ) : (
                   <>
                     <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423L16.5 15.75l.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"/>
                     </svg>
-                    Generate steps
+                    {showRegenerateLabel ? "Regenerate" : "Generate microsteps"}
                   </>
                 )}
               </button>
-              <a 
-                href="/schedule" 
+              {t.microsteps.length > 0 && (
+                <button 
+                  onClick={() => generateMicrosteps(t.id, { refine: true })} 
+                  disabled={stepsBusy}
+                  className="px-3 py-1 rounded-full border text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap flex items-center"
+                >
+                  {isRefiningSteps ? (
+                    <>
+                      <svg className="w-5 h-5 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Refining...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4h16m-9 4h9m-9 4h9m-9 4h9" />
+                      </svg>
+                      More specific steps
+                    </>
+                  )}
+                </button>
+              )}
+              <button 
+                onClick={() => handleAddToSchedule(t)}
                 className="px-3 py-1 rounded-full bg-white/70 border text-sm hover:bg-gray-50"
               >
                 Add to schedule
-              </a>
+              </button>
               <button 
                 onClick={() => removeTask(t.id)}
                 className="px-3 py-1 rounded-full border border-red-200 text-red-600 text-sm hover:bg-red-50 flex items-center gap-1"
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1H8a1 1 0 00-1 1v3M4 7h16" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-2 12H7L5 7m5 4v6m4-6v6m1-10V4H9v3M4 7h16" />
                 </svg>
                 Delete
               </button>

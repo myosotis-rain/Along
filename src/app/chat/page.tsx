@@ -5,8 +5,8 @@ import Composer from "@/components/Composer";
 import AppWrapper from "@/components/AppWrapper";
 import { useApp } from "@/lib/store";
 import { MessageAction } from "@/types/app";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 interface FreeTimeSlot {
   start: string;
@@ -31,12 +31,26 @@ interface ScheduleContext {
   nextCommitment: ScheduleContextEvent | null;
 }
 
-export default function Page() {
-  const { messages, pushUser, pushAssistant, updateMessage, removeMessage, addTask, useGPT, schedule, tasks } = useApp();
+function ChatPage() {
+  const { messages, pushUser, pushAssistant, updateMessage, removeMessage, addTask, useGPT, schedule, tasks, userProfile } = useApp();
   const [calendarActionLoading, setCalendarActionLoading] = useState<string | undefined>();
   const [composerText, setComposerText] = useState("");
   const [addingToPlanner, setAddingToPlanner] = useState<string | undefined>();
+  const [addingToCalendar, setAddingToCalendar] = useState<string | undefined>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Check for prompt parameter from URL and auto-fill composer
+  useEffect(() => {
+    const promptFromUrl = searchParams.get('prompt');
+    if (promptFromUrl) {
+      setComposerText(promptFromUrl);
+      // Clear the URL parameter to avoid re-triggering on subsequent navigations
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('prompt');
+      window.history.replaceState({}, '', newUrl.toString());
+    }
+  }, [searchParams]);
 
   // Detect if user message seems like a task
   function detectTask(text: string): boolean {
@@ -131,7 +145,8 @@ export default function Page() {
         estimateMin: task.estimateMin,
         category: task.category
       })),
-      hasUpcomingDeadlines: upcomingTasks.length > 3
+      hasUpcomingDeadlines: upcomingTasks.length > 3,
+      timezone: userProfile?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
     };
     
     if (useGPT) {
@@ -151,7 +166,8 @@ export default function Page() {
         
         // Add action buttons if this seems like a task
         const actions = isTask ? [
-          { type: "add_to_planner" as const, label: "Add to planner", data: { taskText: text } }
+          { type: "add_to_planner" as const, label: "Add to planner", data: { taskText: text } },
+          { type: "add_to_calendar" as const, label: "Add to calendar", data: { taskText: text } }
         ] : undefined;
         
         // Handle multiple bubbles
@@ -160,7 +176,9 @@ export default function Page() {
             setTimeout(() => {
               // Only add actions to the last bubble, and calendar prompt to first bubble
               const bubbleActions = index === data.bubbles.length - 1 ? actions : undefined;
-              const calendarPrompt = index === 0 && data.calendarAction ? data.calendarAction : undefined;
+              const calendarPrompt = index === 0 && data.calendarAction 
+                ? sanitizeCalendarPrompt(data.calendarAction, text, bubble)
+                : undefined;
               
               const messageId = crypto.randomUUID();
               pushAssistant(bubble, messageId, undefined, bubbleActions);
@@ -173,11 +191,13 @@ export default function Page() {
           });
         } else {
           const messageId = crypto.randomUUID();
-          pushAssistant(data.reply ?? "Want a 20m block or to break it into micro-steps?", messageId, undefined, actions);
+          const replyText = data.reply ?? "Want a 20m block or to break it into micro-steps?";
+          pushAssistant(replyText, messageId, undefined, actions);
           
           // Update with calendar prompt if present
           if (data.calendarAction) {
-            updateMessage(messageId, { calendarPrompt: data.calendarAction });
+            const sanitizedPrompt = sanitizeCalendarPrompt(data.calendarAction, text, replyText);
+            updateMessage(messageId, { calendarPrompt: sanitizedPrompt });
           }
         }
       } catch {
@@ -185,7 +205,8 @@ export default function Page() {
         removeMessage(thinkingId);
         
         const actions = isTask ? [
-          { type: "add_to_planner" as const, label: "Add to planner", data: { taskText: text } }
+          { type: "add_to_planner" as const, label: "Add to planner", data: { taskText: text } },
+          { type: "add_to_calendar" as const, label: "Add to calendar", data: { taskText: text } }
         ] : undefined;
         pushAssistant("connection's wonky but I'm here. what's one small thing we could try?", undefined, undefined, actions);
       }
@@ -235,7 +256,8 @@ export default function Page() {
       }
       
       const actions = isTask ? [
-        { type: "add_to_planner" as const, label: "Add to planner", data: { taskText: text } }
+        { type: "add_to_planner" as const, label: "Add to planner", data: { taskText: text } },
+        { type: "add_to_calendar" as const, label: "Add to calendar", data: { taskText: text } }
       ] : undefined;
       
       // Remove thinking indicator
@@ -319,6 +341,56 @@ export default function Page() {
         addTask(task);
       } finally {
         setAddingToPlanner(undefined);
+      }
+    } else if (action.type === "add_to_calendar") {
+      // Prevent multiple clicks
+      if (addingToCalendar === messageId) return;
+      
+      const taskText = action.data?.taskText || "";
+      
+      // Immediate visual feedback
+      setAddingToCalendar(messageId);
+      updateMessage(messageId, { actions: undefined }); // Remove action buttons
+      
+      try {
+        // Generate a clean title for the calendar event
+        let titlePromise = Promise.resolve(taskText);
+        if (taskText.length > 50 || taskText.includes('.') || taskText.includes('?') || taskText.includes('!')) {
+          titlePromise = fetch('/api/generate-title', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description: taskText })
+          }).then(res => res.json()).then(data => data.title || taskText).catch(() => taskText);
+        }
+        
+        const eventTitle = await titlePromise;
+        
+        // Create a 1-hour work session starting in the next available time slot
+        const now = new Date();
+        const startTime = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour from now
+        const endTime = new Date(startTime.getTime() + 60 * 60 * 1000); // 1 hour duration
+        
+        // Create calendar action for confirmation
+        const calendarAction = sanitizeCalendarPrompt({
+          type: 'create' as const,
+          event: {
+            title: eventTitle,
+            start: startTime.toISOString(),
+            end: endTime.toISOString(),
+            description: `Work session: ${taskText}`,
+          }
+        }, taskText, `I'll create "${eventTitle}" in your calendar.`);
+        
+        // Show confirmation prompt
+        const confirmationMessageId = crypto.randomUUID();
+        pushAssistant(`I'll create "${eventTitle}" in your calendar for ${startTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}. Is that okay?`, confirmationMessageId);
+        updateMessage(confirmationMessageId, { calendarPrompt: calendarAction });
+        
+      } catch (error) {
+        console.error("Failed to prepare calendar event:", error);
+        pushAssistant("Sorry, I couldn't prepare the calendar event. Please try again.", undefined, undefined, undefined);
+      } finally {
+        setAddingToCalendar(undefined);
       }
     }
   }
@@ -418,7 +490,7 @@ export default function Page() {
           onAction={handleAction} 
           onCalendarAction={handleCalendarAction}
           calendarActionLoading={calendarActionLoading}
-          actionLoading={addingToPlanner}
+          actionLoading={addingToPlanner || addingToCalendar}
         />
         <Composer 
           onSend={handleSend} 
@@ -458,5 +530,219 @@ export default function Page() {
         />
       </Shell>
     </AppWrapper>
+  );
+}
+
+type CalendarActionData = {
+  type: "create" | "update" | "delete";
+  event: {
+    title?: string;
+    start?: string;
+    end?: string;
+    description?: string;
+    location?: string;
+  };
+  eventId?: string;
+};
+
+function sanitizeCalendarPrompt(action: CalendarActionData, userInput?: string, assistantText?: string) {
+  if (!action?.event) return action;
+  const updated = {
+    ...action,
+    event: { ...action.event }
+  };
+  updated.event.title = buildCalendarTitle(updated.event.title, userInput, assistantText);
+  alignEventTimesWithText(updated, assistantText, Intl.DateTimeFormat().resolvedOptions().timeZone);
+  return updated;
+}
+
+function buildCalendarTitle(rawTitle?: string, userInput?: string, assistantText?: string) {
+  const fallback = deriveTitleFromContext(userInput) ?? deriveTitleFromContext(assistantText) ?? "Focus Block";
+  if (!rawTitle) return fallback;
+  const cleaned = normalizeCalendarTitle(rawTitle);
+  if (!cleaned) return fallback;
+  const banned = /(help me schedule|please schedule|add (this )?to (my )?calendar)/i;
+  if (banned.test(rawTitle) || banned.test(cleaned)) {
+    return fallback;
+  }
+  return cleaned;
+}
+
+function normalizeCalendarTitle(value: string) {
+  if (!value) return "";
+  let cleaned = value
+    .replace(/[“”]/g, '"')
+    .replace(/^[\"']+|[\"']+$/g, '')
+    .trim();
+  cleaned = cleaned.replace(/^[-–—:]+/, '').trim();
+  cleaned = cleaned.replace(/[^A-Za-z0-9 '&-]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return "";
+  return cleaned
+    .split(' ')
+    .slice(0, 6)
+    .map(word => (word ? word[0].toUpperCase() + word.slice(1).toLowerCase() : ""))
+    .join(' ');
+}
+
+function deriveTitleFromContext(text?: string) {
+  if (!text) return null;
+  const quoted = text.match(/"([^"]{2,80})"/);
+  if (quoted) {
+    return normalizeCalendarTitle(quoted[1]);
+  }
+  const afterColon = text.split(':').slice(1).join(':').trim();
+  if (afterColon) {
+    const sentence = afterColon.split(/[.?!\n]/)[0];
+    const normalized = normalizeCalendarTitle(sentence);
+    if (normalized) return normalized;
+  }
+  const leading = text.split(/[.?!\n]/)[0];
+  return normalizeCalendarTitle(leading);
+}
+
+type SlotMention = {
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+  dayToken?: "today" | "tomorrow";
+};
+
+function alignEventTimesWithText(action: CalendarActionData, assistantText?: string, timeZone?: string) {
+  if (!assistantText) return;
+  const slot = extractSlotMention(assistantText);
+  if (!slot) return;
+  const zone = timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const baseIso = new Date().toISOString();
+  const startDate = buildZonedDate(slot.startHour, slot.startMinute, slot.dayToken, baseIso, zone);
+  const endDate = buildZonedDate(slot.endHour, slot.endMinute, slot.dayToken, baseIso, zone);
+  if (!startDate || !endDate) return;
+  const previous = action.event.start ? Date.parse(action.event.start) : NaN;
+  const diff = Number.isFinite(previous) ? Math.abs(previous - startDate.getTime()) : Infinity;
+  if (diff > 5 * 60 * 1000) {
+    action.event.start = startDate.toISOString();
+    action.event.end = endDate.toISOString();
+  }
+}
+
+function extractSlotMention(text: string): SlotMention | null {
+  const rangeRegex = /(\d{1,2}(?::\d{2})?)\s*(am|pm)?\s*(?:-|–|—|to)\s*(\d{1,2}(?::\d{2})?)\s*(am|pm)?(?:\s+(today|tomorrow))?/i;
+  const match = rangeRegex.exec(text);
+  if (!match) return null;
+  const [, startRaw, startMeridiemRaw, endRaw, endMeridiemRaw, dayTokenRaw] = match;
+  let startMeridiem = startMeridiemRaw;
+  let endMeridiem = endMeridiemRaw;
+  if (!startMeridiem && endMeridiem) startMeridiem = endMeridiem;
+  if (!endMeridiem && startMeridiem) endMeridiem = startMeridiem;
+  if (!startMeridiem || !endMeridiem) return null;
+  const start = convertTo24Hour(startRaw, startMeridiem);
+  const end = convertTo24Hour(endRaw, endMeridiem);
+  if (!start || !end) return null;
+  const normalizedDay = dayTokenRaw?.toLowerCase() === "tomorrow"
+    ? "tomorrow"
+    : dayTokenRaw?.toLowerCase() === "today"
+      ? "today"
+      : undefined;
+  return {
+    startHour: start.hour,
+    startMinute: start.minute,
+    endHour: end.hour,
+    endMinute: end.minute,
+    dayToken: normalizedDay
+  };
+}
+
+function convertTo24Hour(value: string, meridiem: string) {
+  if (!value) return null;
+  const [hourPart, minutePart] = value.split(':');
+  let hour = parseInt(hourPart, 10);
+  const minute = minutePart ? parseInt(minutePart, 10) : 0;
+  if (isNaN(hour) || isNaN(minute)) return null;
+  const mer = meridiem.toLowerCase();
+  hour = hour % 12;
+  if (mer === "pm") hour += 12;
+  return { hour, minute };
+}
+
+function buildZonedDate(
+  hour: number,
+  minute: number,
+  dayToken: "today" | "tomorrow" | undefined,
+  baseIso: string,
+  timeZone: string
+) {
+  if (hour === undefined || minute === undefined) return null;
+  const base = new Date(baseIso);
+  const target = addDaysInZone(base, dayToken === "tomorrow" ? 1 : 0, timeZone);
+  return zonedTimeToUtc(
+    {
+      year: target.year,
+      month: target.month,
+      day: target.day,
+      hour,
+      minute
+    },
+    timeZone
+  );
+}
+
+function addDaysInZone(date: Date, days: number, timeZone: string) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric"
+  });
+  const future = new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+  const parts = formatter.formatToParts(future);
+  const map: Record<string, number> = {};
+  for (const part of parts) {
+    if (part.type === "year" || part.type === "month" || part.type === "day") {
+      map[part.type] = Number(part.value);
+    }
+  }
+  return {
+    year: map.year,
+    month: map.month,
+    day: map.day
+  };
+}
+
+function zonedTimeToUtc(
+  components: { year: number; month: number; day: number; hour: number; minute: number },
+  timeZone: string
+) {
+  const utcDate = new Date(Date.UTC(components.year, components.month - 1, components.day, components.hour, components.minute, 0));
+  const offset = getTimeZoneOffset(utcDate, timeZone);
+  return new Date(utcDate.getTime() - offset);
+}
+
+function getTimeZoneOffset(date: Date, timeZone: string) {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+  const parts = dtf.formatToParts(date);
+  const map: Record<string, number> = {};
+  for (const { type, value } of parts) {
+    if (type !== "literal") {
+      map[type] = Number(value);
+    }
+  }
+  const asUTC = Date.UTC(map.year, map.month - 1, map.day, map.hour, map.minute, map.second || 0);
+  return asUTC - date.getTime();
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <ChatPage />
+    </Suspense>
   );
 }

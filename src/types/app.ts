@@ -1,7 +1,7 @@
 export type Sender = "user" | "assistant";
 
 export type MessageAction = {
-  type: "generate_microsteps" | "add_to_planner" | "start_focus" | "calendar_action";
+  type: "generate_microsteps" | "add_to_planner" | "add_to_calendar" | "start_focus" | "calendar_action";
   label: string;
   data?: {
     taskText?: string;

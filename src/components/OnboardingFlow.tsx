@@ -85,6 +85,16 @@ export default function OnboardingFlow() {
     router.push("/"); // Redirect to the main planning page
   };
 
+  const handleBack = () => {
+    if (currentStep === "profile") {
+      setCurrentStep("welcome");
+    } else if (currentStep === "calendar") {
+      setCurrentStep("profile");
+    } else if (currentStep === "complete") {
+      setCurrentStep(userProfile.hasConnectedGoogleCalendar ? "calendar" : "profile");
+    }
+  };
+
   const stepConfig = {
     welcome: {
       title: "Welcome to Along",
@@ -256,6 +266,18 @@ export default function OnboardingFlow() {
         transition={{ duration: 0.5 }}
       >
         <div className="card p-8 space-y-7">
+          {currentStep !== "welcome" && (
+            <button
+              type="button"
+              onClick={handleBack}
+              className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+              </svg>
+              Back
+            </button>
+          )}
           {/* Progress indicator */}
           <div className="flex justify-center space-x-3 mb-8">
             {(["welcome", "profile", "calendar", "complete"] as OnboardingStep[]).map((step, index) => (
